@@ -1,6 +1,7 @@
 from pathlib import Path
 from os.path import exists as os_exists
 from typing import NewType
+from re import fullmatch as re_fullmatch
 
 
 ErrorMessage = NewType("ErrorMessage", str)
@@ -134,17 +135,37 @@ def ret_node_number(inp_str: str) -> tuple[bool, int | ErrorMessage]:
     """
 
     try:
-        # if string is containing both '(' and ')' then proceed, else raise UnexpectedInputStringFormat("round brackets not found in string")
-        # if the string does not have a integer between the round brackets then raise UnexpectedInputStringFormat("Node number not found in between the brackets")
-        # if the string does not end with ')' then raise UnexpectedInputStringFormat("The round brackets need to be at the end of the string")
-        # if this part is reached then the input is as expected, i.e. there are integers between the round brackets
-        # using the re module: find the integer between the round brackets and return it
-        # note that the integer can be from 0 to max possible value int represents in python.
-        pass
+        if not isinstance(inp_str, str):
+            raise UnexpectedInputStringFormat("Input must be a string")
+
+        processed_inp_str = inp_str.strip()
+
+        # must contain brackets
+        if ("(" not in processed_inp_str) or (")" not in processed_inp_str):
+            raise UnexpectedInputStringFormat("round brackets not found in string")
+
+        # must end with closing bracket
+        if not processed_inp_str.endswith(")"):
+            raise UnexpectedInputStringFormat("The round brackets need to be at the end of the string")
+
+        # extract content inside the last pair of brackets
+        idx = processed_inp_str.rfind("(")
+        if idx == -1:
+            raise UnexpectedInputStringFormat("round brackets not found in string")
+
+        str_with_node_num = processed_inp_str[idx + 1 : -1].strip() #need not include ')' in the string
+        if str_with_node_num == "":
+            raise UnexpectedInputStringFormat("Node number not found in between the brackets")
+
+
+        if not re_fullmatch(r"\d+", str_with_node_num):
+            raise UnexpectedInputStringFormat("Node number not found in between the brackets")
+
+        node_num = int(str_with_node_num)
+        return (True, node_num)
+
     except UnexpectedInputStringFormat as e:
         return (False, f"{e}")
-
-    pass
 
 
 def ret_node_number_list(inp_str: str) -> tuple[bool, list[int] | ErrorMessage]:
