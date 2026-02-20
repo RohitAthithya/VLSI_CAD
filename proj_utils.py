@@ -1,7 +1,7 @@
 from pathlib import Path
 from os.path import exists as os_exists
 from typing import NewType
-from re import fullmatch as re_fullmatch
+from re import fullmatch as re_fullmatch, findall as re_findall
 
 
 ErrorMessage = NewType("ErrorMessage", str)
@@ -146,20 +146,27 @@ def ret_node_number(inp_str: str) -> tuple[bool, int | ErrorMessage]:
 
         # must end with closing bracket
         if not processed_inp_str.endswith(")"):
-            raise UnexpectedInputStringFormat("The round brackets need to be at the end of the string")
+            raise UnexpectedInputStringFormat(
+                "The round brackets need to be at the end of the string"
+            )
 
         # extract content inside the last pair of brackets
         idx = processed_inp_str.rfind("(")
         if idx == -1:
             raise UnexpectedInputStringFormat("round brackets not found in string")
 
-        str_with_node_num = processed_inp_str[idx + 1 : -1].strip() #need not include ')' in the string
+        str_with_node_num = processed_inp_str[
+            idx + 1 : -1
+        ].strip()  # need not include ')' in the string
         if str_with_node_num == "":
-            raise UnexpectedInputStringFormat("Node number not found in between the brackets")
-
+            raise UnexpectedInputStringFormat(
+                "Node number not found in between the brackets"
+            )
 
         if not re_fullmatch(r"\d+", str_with_node_num):
-            raise UnexpectedInputStringFormat("Node number not found in between the brackets")
+            raise UnexpectedInputStringFormat(
+                "Node number not found in between the brackets"
+            )
 
         node_num = int(str_with_node_num)
         return (True, node_num)
@@ -251,7 +258,7 @@ class NodeInfo:
     """
 
     def __init__(
-        self, inp_str: str = "default"
+        self, inp_str: str = "default", do_validation=False
     ):  # optional input, as programmer may intend to parse data later, but has to use the store_info_from_string method!
         self._output_node_num: int = int()
         self._input_node_list: list[int] = list()
@@ -263,33 +270,69 @@ class NodeInfo:
         # TODO: create the getters for the members but no setters
         if self._inp_str.lower() != "default":
             # if input is not default then process
+            if do_validation:
+                self._validate_input()
+            self._populate_data()
+
+    def _validate_input(self):
+        if not isinstance(self._inp_str, str):
+            raise UnexpectedInputStringFormat("Input must be a string")
+
+        processed_inp_str = self._inp_str.strip()
+
+        # must contain '(' and end with ')'
+        if ("(" not in processed_inp_str) or (not processed_inp_str.endswith(")")):
+            raise UnexpectedInputStringFormat("Input string is of unexpected format!")
+
+        # must contain '=' separating output and gate spec
+        if "=" not in processed_inp_str:
+            raise UnexpectedInputStringFormat("Input string is of unexpected format!")
+
+        left, right = processed_inp_str.split("=", 1)
+
+        # left side must be an integer (possibly with surrounding spaces)
+        if not re_fullmatch(r"\s*\d+\s*", left):
+            raise UnexpectedInputStringFormat("Input string is of unexpected format!")
+
+        # right side must start with a gate name made of at least two letters followed by '('
+        gate_spec = right.strip()
+        open_paren_index = gate_spec.find("(")
+        if open_paren_index == -1:
+            raise UnexpectedInputStringFormat("Input string is of unexpected format!")
+
+        gate_name = gate_spec[:open_paren_index].strip()
+        if not re_fullmatch(r"[A-Za-z]{2,}", gate_name):
+            raise UnexpectedInputStringFormat("Input string is of unexpected format!")
+
+    def _populate_data(self):
+        processed_inp_str = self._inp_str.strip()
+        left, right = processed_inp_str.split("=", 1)
+        left, right = left.strip(), right.strip()
+        # output node number
+        mo = re_findall(r"\d+", left)
+        if not mo:
+            raise UnexpectedInputStringFormat("Could not extract output node number")
+        self._output_node_num = int(mo[0])
+
+        # gate name
+        right_strip = right.strip()
+        open_paren_index = right_strip.find("(")
+        gate_name = right_strip[:open_paren_index].strip()
+        if not re_fullmatch(r"[A-Za-z]{2,}", gate_name):
+            raise UnexpectedInputStringFormat("Could not extract gate name")
+        self._gate_name = gate_name
+
+        # input node list - reuse existing helper
+        ok, result = ret_node_number_list(processed_inp_str)
+        if not ok:
+            raise UnexpectedInputStringFormat(result)
+        self._input_node_list = result
+
+    def store_info_from_string(self, inp_str: str, do_validation: bool = False):
+        self._inp_str = inp_str
+        if do_validation:
             self._validate_input()
-            self._populate_data()
-
-        # TODO: Implement this metod
-        # notice that this method is not accessible to the user
-        def _validate_input(self):
-            # 1. check if the input is a string, else raise UnexpectedInputStringFormat("Input must be a string")
-            # 1.2 strip the input!
-            # 3. check if the input has '(' and ends with ')'. else raise UnexpectedInputStringFormat("Input string is of unexpected format!")
-            # 4. check if the input starts with a number and then has '=' sign, else UnexpectedInputStringFormat("Input string is of unexpected format!")
-            # 5. check if the input has atleast 2 english alphabets(upper or lower case) after '=' sign, else UnexpectedInputStringFormat("Input string is of unexpected format!")
-            pass
-
-        # TODO: Implement this metod
-        # notice that this method is not accessible to the user.
-        def _populate_data(self):
-            # if the execution this step then the input is as expected: for e.g.: 123 = AND(1,2,3)
-            # Then :
-            #   6. using re module, at the start of the line before the '=' character, extract the integer and assign it to self._output_node_num
-            #   7. using re module, extract only the word made of english alphabets after '=' character and before the '(' and assign it to self._gate_name
-            #   8. using re module,  extract the list of number between the round brackets and assign this list of integers to self._input_node_list
-            pass
-
-        def store_info_from_string(inp_str: str):
-            self._inp_str = inp_str
-            self._populate_data()
-            pass
+        self._populate_data()
 
 
 # endregion: input file processing methods
@@ -303,3 +346,5 @@ if __name__ == "__main__":
             print(f"<<<<< {line}:")
         else:
             print(line)
+
+    pass
