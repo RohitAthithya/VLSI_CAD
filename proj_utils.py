@@ -186,14 +186,50 @@ def ret_node_number_list(inp_str: str) -> tuple[bool, list[int] | ErrorMessage]:
             (False, ErrorMessage): Error message if the INPUT was wrong or if the node number was not found
     """
     try:
-        # if string is containing both '(' and ')' then proceed, else raise UnexpectedInputStringFormat("round brackets not found in string")
-        # if the string does not have a integer between the round brackets then raise UnexpectedInputStringFormat("Node number not found in between the brackets")
-        # if the string does not end with ')' then raise UnexpectedInputStringFormat("The round brackets need to be at the end of the string")
-        # if this part is reached then the input is as expected, i.e. there are integers comma seperate between the round brackets
-        # using the re module: find the comma seperated integers between the round brackets and return it as a list of integers in the same order!
-        # the output will be wrong if the order is messed up!
-        # note that the integers extracted can be from 0 to max possible value int represents in python.
-        pass
+        if not isinstance(inp_str, str):
+            raise UnexpectedInputStringFormat("Input must be a string")
+
+        processed_inp_string = inp_str.strip()
+
+        # must contain brackets
+        if ("(" not in processed_inp_string) or (")" not in processed_inp_string):
+            raise UnexpectedInputStringFormat("round brackets not found in string")
+
+        # must end with closing bracket
+        if not processed_inp_string.endswith(")"):
+            raise UnexpectedInputStringFormat(
+                "Only the round brackets need to be at the end of the string"
+            )
+
+        # extract content inside the last pair of brackets
+        open_idx = processed_inp_string.rfind("(")
+        if open_idx == -1:
+            raise UnexpectedInputStringFormat("round brackets not found in string")
+
+        inner_content = processed_inp_string[open_idx + 1 : -1].strip()
+        if inner_content == "":
+            raise UnexpectedInputStringFormat(
+                "Node numbers/list not found in between the brackets"
+            )
+
+        # split on commas and validate each token is an integer
+        tokens = [token.strip() for token in inner_content.split(",")]
+        # remove any empty tokens produced by consecutive commas
+        tokens = [t for t in tokens if t != ""]
+        if not tokens:
+            raise UnexpectedInputStringFormat(
+                "Node numbers/list not found in between the brackets, Check delimiter used to seperate node numbers within the round brackets"
+            )
+
+        for token in tokens:
+            if not re_fullmatch(r"\d+", token):
+                raise UnexpectedInputStringFormat(
+                    "Node number not found in between the brackets"
+                )
+
+        lst_node_numbers = [int(t) for t in tokens]
+        return (True, lst_node_numbers)
+
     except UnexpectedInputStringFormat as e:
         return (False, f"{e}")
 
