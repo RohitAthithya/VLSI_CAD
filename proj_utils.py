@@ -25,6 +25,11 @@ class UnexpectedInputStringFormat(Exception):
         super().__init__(message)
 
 
+class UnexpectedFileFormatError(Exception):
+    def __init__(self, message="Input File was of unexpected format"):
+        super().__init__(message)
+
+
 # region: WRAPPERS
 def print_dashed_lines(func):
     def wrapper(*args, **kwargs):
