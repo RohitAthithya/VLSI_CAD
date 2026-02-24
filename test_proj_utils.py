@@ -93,17 +93,17 @@ class TestNodeInfoInit:
     def test_node_info_default_init(self):
         """Test NodeInfo initialization with default argument."""
         node = NodeInfo()
-        assert node._output_node_num == 0
-        assert node._input_node_list == []
-        assert node._gate_name == ""
+        assert node.output_node_num == 0
+        assert node.input_node_list == []
+        assert node.gate_name == ""
         assert node._inp_str == "default"
 
     def test_node_info_default_string_init(self):
         """Test NodeInfo initialization with 'default' string."""
         node = NodeInfo("default")
-        assert node._output_node_num == 0
-        assert node._input_node_list == []
-        assert node._gate_name == ""
+        assert node.output_node_num == 0
+        assert node.input_node_list == []
+        assert node.gate_name == ""
 
     @pytest.mark.parametrize(
         "inp, expected_output, expected_gate, expected_inputs",
@@ -138,21 +138,41 @@ class TestNodeInfoInit:
             ),
         ],
     )
-    def test_node_info_valid_init(self, inp, expected_output, expected_gate, expected_inputs):
+    def test_node_info_valid_init(
+        self, inp, expected_output, expected_gate, expected_inputs
+    ):
         """Test NodeInfo initialization with valid circuit specifications."""
         node = NodeInfo(inp)
-        assert node._output_node_num == expected_output
-        assert node._gate_name == expected_gate
-        assert node._input_node_list == expected_inputs
+        assert node.output_node_num == expected_output
+        assert node.gate_name == expected_gate
+        assert node.input_node_list == expected_inputs
 
     @pytest.mark.parametrize(
         "inp, error_msg_substr",
         [
-            pytest.param("123 AND(1,2,3)", "Input string is of unexpected format", id="missing_equals"),
-            pytest.param("123 = A(1,2)", "Input string is of unexpected format", id="single_letter_gate"),
-            pytest.param("ABC = AND(1,2)", "Input string is of unexpected format", id="output_not_integer"),
-            pytest.param("123 = AND(1,2) extra", "The round brackets need to be at the end", id="content_after_bracket"),
-            pytest.param("123 = AND(1,2a)", "Node number not found", id="non_integer_input"),
+            pytest.param(
+                "123 AND(1,2,3)",
+                "Input string is of unexpected format",
+                id="missing_equals",
+            ),
+            pytest.param(
+                "123 = A(1,2)",
+                "Input string is of unexpected format",
+                id="single_letter_gate",
+            ),
+            pytest.param(
+                "ABC = AND(1,2)",
+                "Input string is of unexpected format",
+                id="output_not_integer",
+            ),
+            pytest.param(
+                "123 = AND(1,2) extra",
+                "The round brackets need to be at the end",
+                id="content_after_bracket",
+            ),
+            pytest.param(
+                "123 = AND(1,2a)", "Node number not found", id="non_integer_input"
+            ),
             pytest.param("123 = AND()", "Node number not found", id="no_inputs"),
         ],
     )
@@ -175,20 +195,20 @@ class TestNodeInfoStoreMethod:
     def test_store_info_from_string_valid(self):
         """Test storing valid circuit info after initialization."""
         node = NodeInfo()
-        assert node._output_node_num == 0
+        assert node.output_node_num == 0
         node.store_info_from_string("999 = BUFFER(7,8,9)")
-        assert node._output_node_num == 999
-        assert node._gate_name == "BUFFER"
-        assert node._input_node_list == [7, 8, 9]
+        assert node.output_node_num == 999
+        assert node.gate_name == "BUFFER"
+        assert node.input_node_list == [7, 8, 9]
 
     def test_store_info_from_string_overwrites_previous(self):
         """Test that store_info_from_string overwrites previous data."""
         node = NodeInfo("50 = NOR(1,2)")
-        assert node._output_node_num == 50
+        assert node.output_node_num == 50
         node.store_info_from_string("100 = NAND(3,4,5)")
-        assert node._output_node_num == 100
-        assert node._gate_name == "NAND"
-        assert node._input_node_list == [3, 4, 5]
+        assert node.output_node_num == 100
+        assert node.gate_name == "NAND"
+        assert node.input_node_list == [3, 4, 5]
 
     def test_store_info_from_string_invalid(self):
         """Test store_info_from_string with invalid input raises exception."""
@@ -214,6 +234,6 @@ class TestNodeInfoStoreMethod:
     def test_store_info_from_string_multiple_stores(self, inp1, inp2):
         """Test multiple store operations."""
         node = NodeInfo(inp1)
-        assert node._output_node_num == int(inp1.split("=")[0].strip())
+        assert node.output_node_num == int(inp1.split("=")[0].strip())
         node.store_info_from_string(inp2)
-        assert node._output_node_num == int(inp2.split("=")[0].strip())
+        assert node.output_node_num == int(inp2.split("=")[0].strip())

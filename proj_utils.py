@@ -7,6 +7,7 @@ from re import fullmatch as re_fullmatch, findall as re_findall
 ErrorMessage = NewType("ErrorMessage", str)
 SuccessMessage = NewType("SuccessMessage", str)
 InputFileText = NewType("InputFileText", list[str])
+FilePath = NewType("FilePath", str)
 
 
 # CONSTANTS
@@ -265,12 +266,28 @@ class NodeInfo:
     def __init__(
         self, inp_str: str = "default", do_validation=False
     ):  # optional input, as programmer may intend to parse data later, but has to use the store_info_from_string method!
-        self._output_node_num: int = int()
-        self._input_node_list: list[int] = list()
-        self._gate_name: str = str()
-        self._inp_str: str = (
-            inp_str  # if user pases any randomn object the validate input is gonna throu wit of!
-        )
+        self.output_node_num: int = int()
+        self.input_node_list: list[int] = list()
+        self.gate_name: str = str()
+        # if user pases any randomn object the validate input is gonna throw it of!
+        self._inp_str: str = inp_str
+        self.gate_number = ""
+
+        #  self.name = ""
+        #  self.outname = ""
+        #  self.Cload = 0.0
+        #  self.inputs = []  #list of handles to the fanin nodes of this node
+        #  self.outputs =[]  #list of handles to the fanout nodes of this node
+        #     self.Tau_in = []  # array/list of input slews (for all inputs to
+        #     the gate), to be used for STA
+        #             self.inp_arrival = []  # array/list of input arrival times for
+        #     input transitions (ignore rise or fall)
+        #             self.outp_arrival = []  # array/list of output arrival times,
+        #     outp_arrival = inp_arrival + cell_delay
+        #             self.max_out_arrival = 0.0  # arrival time at the output of this
+        #     gate using max on (inp_arrival +
+        #     cell_delay)
+        #  self.Tau_out = 0.0  # Resulting output sle
 
         # TODO: create the getters for the members but no setters
         if self._inp_str.lower() != "default":
@@ -317,7 +334,7 @@ class NodeInfo:
         mo = re_findall(r"\d+", left)
         if not mo:
             raise UnexpectedInputStringFormat("Could not extract output node number")
-        self._output_node_num = int(mo[0])
+        self.output_node_num = int(mo[0])
 
         # gate name
         right_strip = right.strip()
@@ -325,13 +342,14 @@ class NodeInfo:
         gate_name = right_strip[:open_paren_index].strip()
         if not re_fullmatch(r"[A-Za-z]{2,}", gate_name):
             raise UnexpectedInputStringFormat("Could not extract gate name")
-        self._gate_name = gate_name
+        self.gate_name = gate_name
+        self.gate_number = f"{gate_name}-{self.output_node_num}"
 
         # input node list - reuse existing helper
         ok, result = ret_node_number_list(processed_inp_str)
         if not ok:
             raise UnexpectedInputStringFormat(result)
-        self._input_node_list = result
+        self.input_node_list = result
 
     def store_info_from_string(self, inp_str: str, do_validation: bool = False):
         self._inp_str = inp_str
@@ -343,8 +361,8 @@ class NodeInfo:
 # endregion: input file processing methods
 
 if __name__ == "__main__":
-    verify_file_path("c17.bench")
-    for line in chunked_line_reader("c17.bench"):
+    verify_file_path("c7552.bench")
+    for line in chunked_line_reader("c7552.bench"):
         if "INPUT" in line:
             print(f">>>>> {line}:")
         elif "OUTPUT" in line:
