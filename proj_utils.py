@@ -174,7 +174,7 @@ def ret_node_number(inp_str: str) -> tuple[bool, int | ErrorMessage]:
                 "Node number not found in between the brackets"
             )
 
-        node_num = int(str_with_node_num)
+        node_num = str_with_node_num
         return (True, node_num)
 
     except UnexpectedInputStringFormat as e:
@@ -240,8 +240,7 @@ def ret_node_number_list(inp_str: str) -> tuple[bool, list[int] | ErrorMessage]:
                     "Node number not found in between the brackets"
                 )
 
-        lst_node_numbers = [int(t) for t in tokens]
-        return (True, lst_node_numbers)
+        return (True, tokens)
 
     except UnexpectedInputStringFormat as e:
         return (False, f"{e}")
@@ -266,8 +265,8 @@ class NodeInfo:
     def __init__(
         self, inp_str: str = "default", do_validation=False
     ):  # optional input, as programmer may intend to parse data later, but has to use the store_info_from_string method!
-        self.output_node_num: int = int()
-        self.input_node_list: list[int] = list()
+        self.output_node_num: str = str()
+        self.input_node_list: list[str] = list()
         self.gate_name: str = str()
         # if user pases any randomn object the validate input is gonna throw it of!
         self._inp_str: str = inp_str
@@ -331,10 +330,9 @@ class NodeInfo:
         left, right = processed_inp_str.split("=", 1)
         left, right = left.strip(), right.strip()
         # output node number
-        mo = re_findall(r"\d+", left)
-        if not mo:
+        if not left:
             raise UnexpectedInputStringFormat("Could not extract output node number")
-        self.output_node_num = int(mo[0])
+        self.output_node_num = left
 
         # gate name
         right_strip = right.strip()
