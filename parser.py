@@ -107,9 +107,11 @@ class Netlist:
             f.write(f"# {len(self.input_pins)} primary inputs\n")
             f.write(f"# {len(self.output_pins)} primary outputs\n")
 
+            line_to_print = []
             for gate_type in sorted(self.gate_type_counts.keys()):
                 count = self.gate_type_counts[gate_type]
-                f.write(f"{count} {gate_type} gates\n")
+                line_to_print.append(f"{count} {gate_type}")
+            f.write(f"# {', '.join(line_to_print)} gates\n")
 
             f.write("\n")
             f.write("Fanout...\n")
@@ -129,7 +131,7 @@ def main(file_name):
     # TODO:need to implement the argparser
     # todo: call the above functions to read the bench file and write the ckt details to a text file
     netlist = Netlist(file_name)
-    netlist.write_ckt_details(F"ckt_details{file_name}.txt")
+    netlist.write_ckt_details(F"ckt_details_{file_name[:file_name.rfind('.')]}.txt")
 
     pass
 
