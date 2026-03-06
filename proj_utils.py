@@ -46,9 +46,7 @@ def print_dashed_lines(func):
 
 
 # region: file reading methods
-def verify_file_path(
-    file_path: str | Path,
-) -> tuple[bool, SuccessMessage | ErrorMessage]:
+def verify_file_path(file_path: str | Path) -> tuple[bool, SuccessMessage | ErrorMessage]:
     """Verify if the input file path is a valid file
 
     Args:
@@ -57,21 +55,17 @@ def verify_file_path(
     Returns:
         tuple[bool, SuccessMessage | ErrorMessage]:
             - if given file exists - returns : (True, "file present at given path")
-            - if given file does not exist - returns: (False, "File not found at given path!")
+            - if given file does not exist - returns: (False, "File not found at given path : {path given}")
+            - if input is not of type string or Path - returns: (False, "Input must be of string or Path data type")
     """
     try:
-        # convert input to Path object
         file_path = Path(file_path)
-
-        # check if file exists using the os.path.exists method
-        os_exists(file_path)
-
-        # all good: then return (True, TXT_FILE_PRESENT)
-        return (True, TXT_FILE_PRESENT)
+        if file_path.exists() and file_path.is_file():
+            return (True, TXT_FILE_PRESENT)
+        return (False, f"{TXT_FILE_MISSING}: {file_path}")
     except TypeError:
         return (False, "Input must be of string or Path data type")
-    except FileNotFoundError:
-        return (False, f"{TXT_FILE_MISSING}: {file_path}")
+
 
 
 def chunked_line_reader(

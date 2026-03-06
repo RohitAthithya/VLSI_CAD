@@ -1,129 +1,139 @@
-from collections import defaultdict
-from platform import node
-from tkinter import N
-from typing import NewType
+#generic imports
+from argparse import ArgumentParser
+from collections import defaultdict, OrderedDict
+from pathlib import Path
+
+#custom imports
 from proj_utils import *
 
-IO_PIND_ARE_PRIMARY = True
 BENCHFILE_LINE_COMMENT = "#"
 BENCHFILE_LINE_INPUT = "INPUT"
 BENCHFILE_LINE_OUTPUT = "OUTPUT"
 
 
-@print_dashed_lines
-def print_output():
-    print("hello")
-
-
 class Gate:
-    def __init__(self, name, inp_wire, output_wire):
-        self.name = name
-        self.fan_in = list()
-        self.fan_out = list()
-        self.fan_in.append(inp_wire)
-        self.fan_out.append(output_wire)
+    def __init__(self, gate_type: str, output_wire: str, input_wires: list[str]):
+        self.gate_type = gate_type.upper()
+        self.output_wire = str(output_wire)
+        self.name = f"{self.gate_type}-{self.output_wire}"
+        self.input_wires = [str(x) for x in input_wires]
+        self.fanin = []
+        self.fanout = []
 
 
 class Netlist:
-    """Class to verify and process the bench file"""
-
     def __init__(self, bench_file_path: FilePath, verify=False):
-        # check bench file validity
-        path_validity = verify_file_path(bench_file_path)
-        if not path_validity[0]:
-            raise Exception(f"{path_validity[1]}")
-
-        self.inp_file_path = bench_file_path
-        # create warning list to note down discrepancies
+        ok, msg = verify_file_path(bench_file_path)
+        if not ok:
+            raise FileNotFoundError(msg)
         self.warning_list = list()
-        # note down the info from comments about inputs, outputs, inverters(NOT) and the gates
-        # create sets to store input and output nodes
-        self.input_pins = dict()
-        self.output_pins = dict()
-        # create adjacency list to store the nodes: defines the netlist
 
-        # process and create the netlist
-        self.process_bench_file(verify)
+        # process the bench file
+        self.inp_file_path = Path(bench_file_path)
+        self.input_pins = OrderedDict()
+        self.output_pins = OrderedDict()
+        self.gates = OrderedDict()
+        self.wire_to_gate = {}
+        self.gate_type_counts = defaultdict(int)
 
-    def process_bench_file(self, warnings_are_errors: bool = False):
+        self.process_bench_file(verify=verify)
+        self.build_connectivity()
+
+    def process_bench_file(self, verify=False):
         """Read the bench file line by line, verify the format and build the adjacency list!
 
         Args:
-            inp_file_path (FilePath): _description_
-            warnings_are_errors (bool, optional): _description_. Defaults to False.
-        """
-        self.current_input_nodes = set()
-        self.current_output_nodes = set()
-        self.gates_info = defaultdict(Gate)
-        self.netlist_DAG = defaultdict(list)
+            verify (bool, optional): if True, verify the format of each line. Defaults to False.
+        """   
 
-        for idx, line in enumerate(chunked_line_reader(self.inp_file_path)):
-            if line.strip() == "":
+        for raw_line in chunked_line_reader(self.inp_file_path):
+            line = raw_line.strip()
+            if not line or line.startswith(BENCHFILE_LINE_COMMENT):
                 continue
-            elif line.startswith(BENCHFILE_LINE_COMMENT):
-                self.process_comment_info()
-            elif line.upper().startswith(BENCHFILE_LINE_INPUT):
+            if line.upper().startswith(BENCHFILE_LINE_INPUT):
                 self.process_input_info(line)
             elif line.upper().startswith(BENCHFILE_LINE_OUTPUT):
                 self.process_output_info(line)
             else:  # it must be a line with node info
                 self.process_node_info(line)
 
-    def process_comment_info(self):
-        pass
+    def process_input_info(self, line: str):
+        ok, node_num = ret_node_number(line)
+        if not ok:
+            raise UnexpectedInputStringFormat(node_num)
+        self.input_pins[str(node_num)] = f"INPUT-{node_num}"
 
-    def process_input_info(self, line):
-        node_info = ret_node_number(line)
-        self.input_pins.update({node_info: 0})
+    def process_output_info(self, line: str):
+        ok, node_num = ret_node_number(line)
+        if not ok:
+            raise UnexpectedInputStringFormat(node_num)
+        self.output_pins[str(node_num)] = f"OUTPUT-{node_num}"
 
-    def process_output_info(self, line):
-        node_info = ret_node_number(line)
-        self.output_pins.update({node_info: 0})
+    def process_node_info(self, line: str):
+        node_info = NodeInfo(line, do_validation=True)
+        gate = Gate(
+            gate_type=node_info.gate_name,
+            output_wire=node_info.output_node_num,
+            input_wires=node_info.input_node_list,
+        )
+        self.gates[gate.name] = gate
+        self.wire_to_gate[gate.output_wire] = gate.name
+        self.gate_type_counts[gate.gate_type] += 1
 
-    def process_node_info(self, line):
-        try:
-            inp_name = ""
-            output_name = ""
-            node_info = NodeInfo(line, do_validation=True)
-            self.current_input_nodes.union(set(node_info.input_node_list))
-            self.current_output_nodes.add(node_info.output_node_num)
-            for inp in node_info.input_node_list:
-                if inp in self.current_output_nodes:
-                    inp_name = f"{node_info.gate_name}-{inp}"
+    def build_connectivity(self):
+        for gate in self.gates.values():
+            fanin_nodes = []
+            for inp_wire in gate.input_wires:
+                if inp_wire in self.wire_to_gate:
+                    fanin_nodes.append(self.wire_to_gate[inp_wire])
                 else:
-                    inp_name = f"INPUT-{inp}"
+                    fanin_nodes.append(f"INPUT-{inp_wire}")
+            gate.fanin = fanin_nodes
 
-                output_name = f"{node_info.gate_name}-{node_info.output_node_num}"
-                if inp_name in self.netlist_DAG:
-                    self.netlist_DAG[inp_name].append(output_name)
-                else:
-                    self.netlist_DAG.update({inp_name: [output_name]})
+        for gate in self.gates.values():
+            consumers = []
+            gate_wire = gate.output_wire
+            for other_gate in self.gates.values():
+                if gate is other_gate:
+                    continue
+                if gate_wire in other_gate.input_wires:
+                    consumers.append(other_gate.name)
+            if gate_wire in self.output_pins:
+                consumers.append(f"OUTPUT-{gate_wire}")
+            gate.fanout = consumers
 
-                # populate gate info
-                if output_name in self.gates_info:
-                    self.gates_info[output_name].fan_in.append(inp_name)
-                else:
-                    self.gates_info.update({output_name: [inp_name]})
+    def write_ckt_details(self, output_path="ckt_details.txt"):
+        with open(output_path, "w", encoding=ENCODING_FORMAT_DEFAULT) as f:
+            f.write(f"# {len(self.input_pins)} primary inputs\n")
+            f.write(f"# {len(self.output_pins)} primary outputs\n")
 
-                if (node_info.gate_name in inp_name) and (inp_name in self.gates_info):
-                    
+            for gate_type in sorted(self.gate_type_counts.keys()):
+                count = self.gate_type_counts[gate_type]
+                f.write(f"{count} {gate_type} gates\n")
 
-        except:
-            print("erroneous file, node information is not proper!")
-            # TODO: handle this separately
+            f.write("\n")
+            f.write("Fanout...\n")
+            for gate_name, gate in self.gates.items():
+                f.write(f"{gate_name}: {', '.join(gate.fanout)}\n")
 
-    def info_fan_in():
+            f.write("\n")
+            f.write("Fanin...\n")
+            for gate_name, gate in self.gates.items():
+                f.write(f"{gate_name}: {', '.join(gate.fanin)}\n")
 
-        pass
 
-    def info_fan_out():
 
-        pass
+
+
+def main(file_name):
+    # TODO:need to implement the argparser
+    # todo: call the above functions to read the bench file and write the ckt details to a text file
+    netlist = Netlist(file_name)
+    netlist.write_ckt_details(F"ckt_details{file_name}.txt")
+
+    pass
 
 
 if __name__ == "__main__":
-    filepath = "c17.bench"
-    obj = Netlist(filepath)
-    # obj.process_bench_file()
-
-    print("done")
+    file_name = "c17.bench"
+    main(file_name)
