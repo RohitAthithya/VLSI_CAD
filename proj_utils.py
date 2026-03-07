@@ -162,11 +162,11 @@ def ret_node_number(inp_str: str) -> tuple[bool, int | ErrorMessage]:
             raise UnexpectedInputStringFormat(
                 "Node number not found in between the brackets"
             )
-
-        if not re_fullmatch(r"\d+", str_with_node_num):
-            raise UnexpectedInputStringFormat(
-                "Node number not found in between the brackets"
-            )
+        # this check is deprecated, as the node numbers can be a string rather an integer
+        # if not re_fullmatch(r"\d+", str_with_node_num):
+        #     raise UnexpectedInputStringFormat(
+        #         "Node number not found in between the brackets"
+        #     )
 
         node_num = str_with_node_num
         return (True, node_num)
@@ -227,12 +227,13 @@ def ret_node_number_list(inp_str: str) -> tuple[bool, list[int] | ErrorMessage]:
             raise UnexpectedInputStringFormat(
                 "Node numbers/list not found in between the brackets, Check delimiter used to seperate node numbers within the round brackets"
             )
-
-        for token in tokens:
-            if not re_fullmatch(r"\d+", token):
-                raise UnexpectedInputStringFormat(
-                    "Node number not found in between the brackets"
-                )
+            
+        # check is deprecated, as the node numbers can be a string rather an integer
+        # for token in tokens:
+        #     if not re_fullmatch(r"\d+", token):
+        #         raise UnexpectedInputStringFormat(
+        #             "Node number not found in between the brackets"
+        #         )
 
         return (True, tokens)
 
@@ -305,9 +306,9 @@ class NodeInfo:
 
         left, right = processed_inp_str.split("=", 1)
 
-        # left side must be an integer (possibly with surrounding spaces)
-        if not re_fullmatch(r"\s*\d+\s*", left):
-            raise UnexpectedInputStringFormat("Input string is of unexpected format!")
+        # left side must be an node number/string
+        if not isinstance(left, str) or not left.strip():
+            raise UnexpectedInputStringFormat("Input is not a valid string!")
 
         # right side must start with a gate name made of at least two letters followed by '('
         gate_spec = right.strip()
