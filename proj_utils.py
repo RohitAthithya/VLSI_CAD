@@ -1,9 +1,10 @@
+# imports
 from pathlib import Path
 from os.path import exists as os_exists
 from typing import NewType
 from re import fullmatch as re_fullmatch, findall as re_findall
 
-
+# custom type aliases
 ErrorMessage = NewType("ErrorMessage", str)
 SuccessMessage = NewType("SuccessMessage", str)
 InputFileText = NewType("InputFileText", list[str])
@@ -24,8 +25,6 @@ TXT_FILE_MISSING = "File not found at given path"
 class UnexpectedInputStringFormat(Exception):
     def __init__(self, message="Input string was of unexpected format"):
         super().__init__(message)
-
-
 class UnexpectedFileFormatError(Exception):
     def __init__(self, message="Input File was of unexpected format"):
         super().__init__(message)
@@ -40,8 +39,6 @@ def print_dashed_lines(func):
         return ret_val
 
     return wrapper
-
-
 # endregion: WRAPPERS
 
 
@@ -107,14 +104,10 @@ def chunked_line_reader(
 
             # last line for previouis chunk will be in the net buffered chunk!
             buffer = lines[-1]
-
-
 # endregion: file reading methods
 
 
 # region: input file processing methods
-
-
 def ret_node_number(inp_str: str) -> tuple[bool, int | ErrorMessage]:
     """### From the input string, find the integers at the end string surrounded with brackets
     INPUT MUST HAVE A NUMBER ENCLOSED WITH ROUND BRACKETS PRESENT AT THE END OF THE STRING:
@@ -162,11 +155,6 @@ def ret_node_number(inp_str: str) -> tuple[bool, int | ErrorMessage]:
             raise UnexpectedInputStringFormat(
                 "Node number not found in between the brackets"
             )
-        # this check is deprecated, as the node numbers can be a string rather an integer
-        # if not re_fullmatch(r"\d+", str_with_node_num):
-        #     raise UnexpectedInputStringFormat(
-        #         "Node number not found in between the brackets"
-        #     )
 
         node_num = str_with_node_num
         return (True, node_num)
@@ -228,12 +216,6 @@ def ret_node_number_list(inp_str: str) -> tuple[bool, list[int] | ErrorMessage]:
                 "Node numbers/list not found in between the brackets, Check delimiter used to seperate node numbers within the round brackets"
             )
             
-        # check is deprecated, as the node numbers can be a string rather an integer
-        # for token in tokens:
-        #     if not re_fullmatch(r"\d+", token):
-        #         raise UnexpectedInputStringFormat(
-        #             "Node number not found in between the brackets"
-        #         )
 
         return (True, tokens)
 
