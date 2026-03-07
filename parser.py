@@ -84,7 +84,7 @@ class Netlist:
 
     """    
     
-    def __init__(self, bench_file_path: FilePath, verify:bool=False):
+    def __init__(self, bench_file_path: FilePath, verify:bool=False) -> None:
         """ Initialize the Netlist object by processing the .bench file and building connectivity.
 
         Args:
@@ -109,7 +109,7 @@ class Netlist:
         self.process_bench_file(verify=verify)
         self.build_connectivity()
 
-    def process_bench_file(self, verify=False):
+    def process_bench_file(self, verify=False) -> None:
         """Read the bench file line by line, verify the format and build the adjacency list!
 
         Args:
@@ -132,13 +132,24 @@ class Netlist:
             else:  # it must be a line with node info
                 self.process_node_info(line)
 
-    def process_input_info(self, line: str):
+    def process_input_info(self, line: str) -> None:
+        """ ## Processes a line that defines an input pin and updates the input_pins mapping.
+
+        ### Args:
+            line (str): 
+                - line from bench file: 
+                - Expected format: 'INPUT(<node_num>)'
+
+        ### Raises:
+            UnexpectedInputStringFormat: if line is of unexpected format
+        """        
         ok, node_num = ret_node_number(line)
         if not ok:
             raise UnexpectedInputStringFormat(node_num)
         self.input_pins[str(node_num)] = f"INPUT-{node_num}"
 
-    def process_output_info(self, line: str):
+    def process_output_info(self, line: str) -> None:
+        
         ok, node_num = ret_node_number(line)
         if not ok:
             raise UnexpectedInputStringFormat(node_num)
