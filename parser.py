@@ -209,6 +209,15 @@ class Netlist:
             for gate_name, gate in self.gates.items():
                 f.write(f"{gate_name}: {', '.join(gate.fanin)}\n")
 
+
+#TODO: implement the NLDM parser and related classes and functions
+class CellNLDM:
+    pass
+
+
+
+
+
 def build_arg_parser() -> ArgumentParser:
     """Define the args in command line to run this parser.
 
