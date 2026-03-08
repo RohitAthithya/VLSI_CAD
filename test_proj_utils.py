@@ -237,3 +237,77 @@ class TestNodeInfoStoreMethod:
         assert node.output_node_num == int(inp1.split("=")[0].strip())
         node.store_info_from_string(inp2)
         assert node.output_node_num == int(inp2.split("=")[0].strip())
+
+
+# Tests for ret_name_and_logic_type, ret_value_for_label, ret_nums_in_str, ret_2d_list_from_str
+@pytest.mark.parametrize(
+    "inp, expected",
+    [
+        ("cell (NAND2_X1) {", ("NAND2_X1", "NAND")),
+        ("  cell (inv_x4) {", ("INV_X4", "INV")),
+        ("cell (NOR) {", ("NOR", "NOR")),
+    ],
+)
+def test_ret_name_and_logic_type_valid(inp, expected):
+    assert ret_name_and_logic_type(inp) == expected
+
+
+def test_ret_name_and_logic_type_invalid():
+    with pytest.raises(UnexpectedInputStringFormat):
+        ret_name_and_logic_type("not a cell")
+
+    with pytest.raises(UnexpectedInputStringFormat):
+        # name contains no alphabetic characters to derive logic type
+        ret_name_and_logic_type("cell (1234) {")
+
+
+@pytest.mark.parametrize(
+    "line, expected",
+    [
+        ("capacitance : 0.123;", 0.123),
+        ("  Capacitance:0.5 ;", 0.5),
+    ],
+)
+def test_ret_value_for_label_valid(line, expected):
+    assert ret_value_for_label(line) == pytest.approx(expected)
+
+
+def test_ret_value_for_label_invalid():
+    with pytest.raises(UnexpectedInputStringFormat):
+        ret_value_for_label("resistance : 0.1;")
+
+    with pytest.raises(UnexpectedInputStringFormat):
+        ret_value_for_label("capacitance - 0.1;")
+
+    with pytest.raises(UnexpectedInputStringFormat):
+        ret_value_for_label("capacitance: not_a_number;")
+
+
+def test_ret_nums_in_str_valid():
+    inp = 'index_1 ("0.1, 0.2,0.3");'
+    assert ret_nums_in_str(inp) == [0.1, 0.2, 0.3]
+
+
+def test_ret_nums_in_str_invalid():
+    with pytest.raises(UnexpectedInputStringFormat):
+        # missing quotes
+        ret_nums_in_str('index_1 (0.1,0.2);')
+
+    with pytest.raises(UnexpectedInputStringFormat):
+        # non-numeric token
+        ret_nums_in_str('index_1 ("0.1, a, 0.3");')
+
+
+def test_ret_2d_list_from_str_valid():
+    lines = [
+        '"0.1, 0.2,0.3"',
+        '"1.0,2.0,3.0"',
+    ]
+    expected = [[0.1, 0.2, 0.3], [1.0, 2.0, 3.0]]
+    assert ret_2d_list_from_str(lines) == expected
+
+
+def test_ret_2d_list_from_str_invalid_row_raises():
+    lines = ['"0.1, a, 0.3"']
+    with pytest.raises(UnexpectedInputStringFormat):
+        ret_2d_list_from_str(lines)
