@@ -9,6 +9,17 @@ from proj_utils import *
 BENCHFILE_LINE_COMMENT = "#"
 BENCHFILE_LINE_INPUT = "INPUT"
 BENCHFILE_LINE_OUTPUT = "OUTPUT"
+NLDM_LINE_CELL = "cell "
+NLDM_LINE_CELL_DELAY = "cell_delay("
+NLDM_LINE_OUTPUT_SLEW = "output_slew("
+NLDM_LINE_CAPACITANCE = "capacitance"
+NLDM_LINE_INDEX_1 = "index_1"
+NLDM_LINE_INDEX_2 = "index_2"
+NLDM_LINE_VALUES = "values"
+NLDM_LINE_VALUES_BLOCK_START = "("
+NLDM_LINE_VALUES_BLOCK_END = ");"
+NLDM_LINE_START_BLOCK = "{"
+NLDM_LINE_END_BLOCK = "}"
 
 
 class Gate:
@@ -84,7 +95,7 @@ class Netlist:
 
     """    
     
-    def __init__(self, bench_file_path: FilePath, verify:bool=False):
+    def __init__(self, bench_file_path: FilePath, verify:bool=False) -> None:
         """ Initialize the Netlist object by processing the .bench file and building connectivity.
 
         Args:
@@ -109,7 +120,7 @@ class Netlist:
         self.process_bench_file(verify=verify)
         self.build_connectivity()
 
-    def process_bench_file(self, verify=False):
+    def process_bench_file(self, verify=False) -> None:
         """Read the bench file line by line, verify the format and build the adjacency list!
 
         Args:
@@ -132,13 +143,24 @@ class Netlist:
             else:  # it must be a line with node info
                 self.process_node_info(line)
 
-    def process_input_info(self, line: str):
+    def process_input_info(self, line: str) -> None:
+        """ ## Processes a line that defines an input pin and updates the input_pins mapping.
+
+        ### Args:
+            line (str): 
+                - line from bench file: 
+                - Expected format: 'INPUT(<node_num>)'
+
+        ### Raises:
+            UnexpectedInputStringFormat: if line is of unexpected format
+        """        
         ok, node_num = ret_node_number(line)
         if not ok:
             raise UnexpectedInputStringFormat(node_num)
         self.input_pins[str(node_num)] = f"INPUT-{node_num}"
 
-    def process_output_info(self, line: str):
+    def process_output_info(self, line: str) -> None:
+        
         ok, node_num = ret_node_number(line)
         if not ok:
             raise UnexpectedInputStringFormat(node_num)
@@ -198,8 +220,335 @@ class Netlist:
             for gate_name, gate in self.gates.items():
                 f.write(f"{gate_name}: {', '.join(gate.fanin)}\n")
 
+
+
+class CellNLDM:
+    """
+        Class to hold the NLDM data for a single cell.
+
+        Attributes:
+            - name (str): The name of the cell (e.g., "NAND2_X1").
+            - logic_type (str): The logic type of the cell (e.g., "NAND").
+            - capacitance (float | None): The input capacitance of the cell, if specified.
+            - tau_in_vals (list[float]): The list of input slew values (index_1).
+            - c_load_vals (list[float]): The list of load capacitance values (index_2).
+            - delay_table (list[list[float]]): The 2D list of delay values
+                corresponding to the input slew and load capacitance indices.
+            - slew_table (list[list[float]]): The 2D list of output slew values
+                corresponding to the input slew and load capacitance indices.       
+            - delay_unit (str): The unit of the delay values (e.g., "ns").
+            - slew_unit (str): The unit of the slew values (e.g., "ns").
+            - cap_unit (str): The unit of the capacitance values (e.g., "ff").
+        
+        Methods:
+            __init__(self, name: str, logic_type: str): Initializes the CellNLDM object with its name and logic type.
+            (Phase-2) find_interpolated_value(...): Method to find interpolated delay/slew values for given input slew and load cap.
+            (Phase-2) delay(...): Method to get delay for specific input slew and load cap, using interpolation if necessary.
+            (Phase-2) slew(...): Method to get output slew for specific input slew and load cap, using interpolation if necessary.
+
+    """
+    def __init__(self, name: str, logic_type: str):
+        self.name: str = name              # e.g. NAND2_X1
+        self.logic_type: str = logic_type  # e.g. NAND
+
+        self.capacitance: float | None = None  # input capacitance
+
+        self.tau_in_vals: list[float] = []     # index_1 (input slew)
+        self.c_load_vals: list[float] = []     # index_2 (load cap)
+
+        self.delay_table: list[list[float]] = []  # delays[i][j]
+        self.slew_table: list[list[float]] = []   # slews[i][j]
+
+        self.delay_unit: str = "ns"
+        self.slew_unit: str = "ns"
+        self.cap_unit: str = "ff"
+
+    # Phase-2 methods will be added later:
+    # def find_interpolated_value(...), delay(...), slew(...)
+
+
+class NLDM:
+    """
+        Class to hold the entire NLDM library, with methods to parse from a liberty file and write out LUTs.
+
+        Attributes:
+            cells (dict[str, CellNLDM]): Mapping from cell names to their NLDM data.
+            logic_to_cell_name (dict[str, str]): Mapping
+                from logic types (e.g., "NAND") to a preferred cell name (e.g., "NAND2_X1") for that logic type.
+        
+        Methods:
+            __init__(): Initializes the NLDM object with empty cell data.
+            parse_file(lib_path): Parses a liberty NLDM file and populates the cells dictionary.
+            write_delay_LUT(output_path): Writes delay LUTs to a specified output file.
+            write_slew_LUT(output_path): Writes slew LUTs to a specified output file.
+
+        
+
+    """    
+    def __init__(self):
+        """
+            Initialize the NLDM object with empty cell data.
+
+        """        
+        self.cells: dict[str, CellNLDM] = OrderedDict()
+        self.logic_to_cell_name: dict[str, str] = {}
+
+
+    def parse_file(self, lib_path: str | FilePath) -> None:
+        """Parse a liberty NLDM file and populate the cells dictionary.
+
+        Assumes the liberty file is well-formed.
+        """
+        lib_path = Path(lib_path)
+
+        current_cell: CellNLDM | None = None
+        in_cell_delay = False
+        in_output_slew = False
+        collecting_values = False
+        value_lines: list[str] = []
+
+        for raw_line in chunked_line_reader(lib_path):
+            line = raw_line.strip()
+            if not line:
+                continue
+
+            low = line.lower()
+
+            # Start of a new cell
+            if low.startswith(NLDM_LINE_CELL) and (NLDM_LINE_CELL_DELAY not in low):
+                name, logic_type = ret_name_and_logic_type(line)
+                current_cell = CellNLDM(name=name, logic_type=logic_type)
+                self.cells[name] = current_cell
+                if logic_type not in self.logic_to_cell_name:
+                    self.logic_to_cell_name[logic_type] = name
+                in_cell_delay = False
+                in_output_slew = False
+                collecting_values = False
+                value_lines = []
+                continue
+
+            # If we are not inside any cell, skip
+            if current_cell is None:
+                continue
+
+            # Capacitance line (outside timing blocks)
+            if (NLDM_LINE_CAPACITANCE in low) and not in_cell_delay and not in_output_slew:
+                current_cell.capacitance = ret_value_for_label(line)
+                continue
+
+            # Enter cell_delay block
+            if low.startswith(NLDM_LINE_CELL_DELAY):
+                in_cell_delay = True
+                in_output_slew = False
+                collecting_values = False
+                value_lines = []
+                continue
+
+            # Enter output_slew block
+            if low.startswith(NLDM_LINE_OUTPUT_SLEW):
+                in_output_slew = True
+                in_cell_delay = False
+                collecting_values = False
+                value_lines = []
+                continue
+
+            # Inside delay or slew block
+            if in_cell_delay or in_output_slew:
+                # index_1
+                if low.startswith(NLDM_LINE_INDEX_1):
+                    vals = ret_nums_in_str(line)
+                    if not current_cell.tau_in_vals:
+                        current_cell.tau_in_vals = vals
+                    continue
+
+                # index_2
+                if low.startswith(NLDM_LINE_INDEX_2):
+                    vals = ret_nums_in_str(line)
+                    if not current_cell.c_load_vals:
+                        current_cell.c_load_vals = vals
+                    continue
+
+                # values(...) start
+                if NLDM_LINE_VALUES in low and NLDM_LINE_VALUES_BLOCK_START in line:
+                    collecting_values = True
+                    value_lines = [line]
+                    if NLDM_LINE_VALUES_BLOCK_END in line:
+                        table = ret_2d_list_from_str(value_lines)
+                        if in_cell_delay:
+                            current_cell.delay_table = table
+                        elif in_output_slew:
+                            current_cell.slew_table = table
+                        collecting_values = False
+                        value_lines = []
+                    continue
+
+                # values(...) continuation
+                if collecting_values:
+                    value_lines.append(line)
+                    if NLDM_LINE_VALUES_BLOCK_END in line:
+                        table = ret_2d_list_from_str(value_lines)
+                        if in_cell_delay:
+                            current_cell.delay_table = table
+                        elif in_output_slew:
+                            current_cell.slew_table = table
+                        collecting_values = False
+                        value_lines = []
+                    continue
+
+                # End of timing block
+                if line == NLDM_LINE_END_BLOCK:
+                    in_cell_delay = False
+                    in_output_slew = False
+                    collecting_values = False
+                    value_lines = []
+                    continue
+
+            # End of cell block (a lone '}' when not inside delay/slew)
+            if line == NLDM_LINE_END_BLOCK and not in_cell_delay and not in_output_slew:
+                self._validate_cell(current_cell)
+                current_cell = None
+                in_cell_delay = False
+                in_output_slew = False
+                collecting_values = False
+                value_lines = []
+                continue
+
+    def _validate_cell(self, cell: CellNLDM) -> None:
+        """Sanity-check sizes of indices and tables for a single cell."""
+        if cell is None:
+            return
+        # Only validate if both indices and tables are present
+        if cell.tau_in_vals and cell.c_load_vals and cell.delay_table:
+            n_rows = len(cell.delay_table)
+            n_cols = len(cell.delay_table[0])
+            if n_rows != len(cell.tau_in_vals) or n_cols != len(cell.c_load_vals):
+                raise UnexpectedInputStringFormat(
+                    f"Delay table shape mismatch for cell {cell.name}"
+                )
+        if cell.tau_in_vals and cell.c_load_vals and cell.slew_table:
+            n_rows = len(cell.slew_table)
+            n_cols = len(cell.slew_table[0])
+            if n_rows != len(cell.tau_in_vals) or n_cols != len(cell.c_load_vals):
+                raise UnexpectedInputStringFormat(
+                    f"Slew table shape mismatch for cell {cell.name}"
+                )
+                
+
+    def write_delay_LUT(self, output_path: str | Path) -> None:
+        """Write delay LUTs to delay_LUT.txt-style file."""
+        output_path = Path(output_path)
+        with open(output_path, "w", encoding="utf-8") as f:
+            first = True
+            for cell in self.cells.values():
+                if not first:
+                    f.write("\n")
+                first = False
+
+                f.write(f"cell: {cell.name}\n")
+                f.write(
+                    "input  slews:  "
+                    + ",".join(str(v) for v in cell.tau_in_vals)
+                    + "\n"
+                )
+                f.write(
+                    "load cap: "
+                    + ",".join(str(v) for v in cell.c_load_vals)
+                    + "\n\n"
+                )
+                f.write("delays:\n")
+                for row in cell.delay_table:
+                    f.write(",".join(str(v) for v in row) + ";\n")
+
+    def write_slew_LUT(self, output_path: str | Path) -> None:
+        """Write slew LUTs to slew_LUT.txt-style file."""
+        output_path = Path(output_path)
+        with open(output_path, "w", encoding="utf-8") as f:
+            first = True
+            for cell in self.cells.values():
+                if not first:
+                    f.write("\n")
+                first = False
+
+                f.write(f"cell: {cell.name}\n")
+                f.write(
+                    "input  slews:  "
+                    + ",".join(f"{v}" for v in cell.tau_in_vals)
+                    + "\n"
+                )
+                f.write(
+                    "load cap: "
+                    + ",".join(f"{v:.6f}" for v in cell.c_load_vals)
+                    + "\n\n"
+                )
+                f.write("slews:\n")
+                for row in cell.slew_table:
+                    f.write(",".join(f"{v:.6f}" for v in row) + ";\n")
+
+    def __str__(self) -> str:
+        """
+            Return a human-readable summary of the NLDM library.
+        """
+        lines: list[str] = []
+        lines.append(f"NLDM library with {len(self.cells)} cells.\n")
+
+        for cell in self.cells.values():
+            lines.append(f"Cell: {cell.name} (logic_type={cell.logic_type})")
+            cap_str = (
+                f"{cell.capacitance} {cell.cap_unit}"
+                if cell.capacitance is not None
+                else "N/A"
+            )
+            lines.append(f"  Input capacitance: {cap_str}")
+
+            # Indices info
+            lines.append(
+                f"  Tau_in points: {len(cell.tau_in_vals)} "
+                f"({cell.delay_unit if cell.tau_in_vals else 'n/a'})"
+            )
+            lines.append(
+                f"  C_load points: {len(cell.c_load_vals)} "
+                f"({cell.cap_unit if cell.c_load_vals else 'n/a'})"
+            )
+
+            # Table shapes
+            if cell.delay_table:
+                lines.append(
+                    f"  Delay table shape: "
+                    f"{len(cell.delay_table)} x {len(cell.delay_table[0])} "
+                    f"({cell.delay_unit})"
+                )
+            else:
+                lines.append("  Delay table: not parsed")
+
+            if cell.slew_table:
+                lines.append(
+                    f"  Slew table shape: "
+                    f"{len(cell.slew_table)} x {len(cell.slew_table[0])} "
+                    f"({cell.slew_unit})"
+                )
+            else:
+                lines.append("  Slew table: not parsed")
+
+            # Optionally print first/last index values as a quick sanity check
+            if cell.tau_in_vals:
+                lines.append(
+                    f"  Tau_in range: {cell.tau_in_vals[0]} .. {cell.tau_in_vals[-1]}"
+                )
+            if cell.c_load_vals:
+                lines.append(
+                    f"  C_load range: {cell.c_load_vals[0]} .. {cell.c_load_vals[-1]}"
+                )
+
+            lines.append("")  # blank line between cells
+
+        return "\n".join(lines)
+        
+        
+
+
+
 def build_arg_parser() -> ArgumentParser:
-    """Define the args in command line to run this parser.
+    """ Define the args in command line to run this parser.
 
     Returns:
         ArgumentParser: _description_
@@ -214,26 +563,41 @@ def build_arg_parser() -> ArgumentParser:
 
 
 def main(file_name=""):
+    if file_name=="":
+        parser = build_arg_parser()
+        args = parser.parse_args()
 
-    parser = build_arg_parser()
-    args = parser.parse_args()
+        if args.read_ckt:
+            netlist = Netlist(args.read_ckt)
+            output_file_name = ''.join(("ckt_details_", Path(args.read_ckt).stem, ".txt"))
+            netlist.write_ckt_details(output_file_name)
+            return
 
-    if args.read_ckt:
-        netlist = Netlist(args.read_ckt)
-        output_file_name = ''.join(("ckt_details_", Path(args.read_ckt).stem, ".txt"))
-        netlist.write_ckt_details(output_file_name)
-        return
+        if args.read_nldm:
+            nldm = NLDM()
+            nldm.parse_file(args.read_nldm)
+            stem = Path(args.read_nldm).stem
+            if args.delays:
+                nldm.write_delay_LUT(f"delay_LUT_{stem}.txt")
+            if args.slews:
+                nldm.write_slew_LUT(f"slew_LUT_{stem}.txt")
+            if not (args.delays or args.slews):
+                parser.error("Use --delays and/or --slews with --read_nldm.")
+            return
 
-    if args.read_nldm:
-        raise NotImplementedError("read_nldm is not implemented yet.")
-
-    parser.error("Provide --read_ckt <benchfile> or --read_nldm <libfile>.")
-
-    netlist = Netlist(file_name)
+        parser.error("Provide --read_ckt <benchfile> or --read_nldm <libfile>.")
+    else:
+        nldm = NLDM()
+        nldm.parse_file(file_name)
+        stem = Path(file_name).stem
+        nldm.write_delay_LUT(f"delay_LUT.txt")
+        nldm.write_slew_LUT(f"slew_LUT.txt")
+        print(nldm)
 
     pass
 
 
 if __name__ == "__main__":
-    # file_name = "c17.bench"
-    main()
+    file_name = "sample_NLDM.lib"
+    main(file_name)
+    # main()

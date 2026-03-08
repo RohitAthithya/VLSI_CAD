@@ -19,14 +19,16 @@ DASHED_LINES = "".join(["-" for i in range(32)])
 # TEXT CONSTANTS
 TXT_FILE_PRESENT = "File present at given path, user can read!"
 TXT_FILE_MISSING = "File not found at given path"
+TXT_CELL = "cell"
+TXT_CAPACITANCE = "capacitance"
 
 
 # CUSTOM EXCEPTIONS:
 class UnexpectedInputStringFormat(Exception):
-    def __init__(self, message="Input string was of unexpected format"):
+    def __init__(self, message: str = "Input string was of unexpected format"):
         super().__init__(message)
 class UnexpectedFileFormatError(Exception):
-    def __init__(self, message="Input File was of unexpected format"):
+    def __init__(self, message: str = "Input File was of unexpected format"):
         super().__init__(message)
 
 
@@ -247,32 +249,15 @@ class NodeInfo:
         self.gate_name: str = str()
         # if user pases any randomn object the validate input is gonna throw it of!
         self._inp_str: str = inp_str
-        self.gate_number = ""
+        self.gate_number: str = ""
 
-        #  self.name = ""
-        #  self.outname = ""
-        #  self.Cload = 0.0
-        #  self.inputs = []  #list of handles to the fanin nodes of this node
-        #  self.outputs =[]  #list of handles to the fanout nodes of this node
-        #     self.Tau_in = []  # array/list of input slews (for all inputs to
-        #     the gate), to be used for STA
-        #             self.inp_arrival = []  # array/list of input arrival times for
-        #     input transitions (ignore rise or fall)
-        #             self.outp_arrival = []  # array/list of output arrival times,
-        #     outp_arrival = inp_arrival + cell_delay
-        #             self.max_out_arrival = 0.0  # arrival time at the output of this
-        #     gate using max on (inp_arrival +
-        #     cell_delay)
-        #  self.Tau_out = 0.0  # Resulting output sle
-
-        # TODO: create the getters for the members but no setters
         if self._inp_str.lower() != "default":
             # if input is not default then process
             if do_validation:
                 self._validate_input()
             self._populate_data()
 
-    def _validate_input(self):
+    def _validate_input(self) -> None:
         if not isinstance(self._inp_str, str):
             raise UnexpectedInputStringFormat("Input must be a string")
 
@@ -302,7 +287,7 @@ class NodeInfo:
         if not re_fullmatch(r"[A-Za-z]{2,}", gate_name):
             raise UnexpectedInputStringFormat("Input string is of unexpected format!")
 
-    def _populate_data(self):
+    def _populate_data(self) -> None:
         processed_inp_str = self._inp_str.strip()
         left, right = processed_inp_str.split("=", 1)
         left, right = left.strip(), right.strip()
@@ -323,17 +308,184 @@ class NodeInfo:
         # input node list - reuse existing helper
         ok, result = ret_node_number_list(processed_inp_str)
         if not ok:
-            raise UnexpectedInputStringFormat(result)
-        self.input_node_list = result
+            raise UnexpectedInputStringFormat(str(result))
+        self.input_node_list = [str(x) for x in result]
 
-    def store_info_from_string(self, inp_str: str, do_validation: bool = False):
+    def store_info_from_string(self, inp_str: str, do_validation: bool = False) -> None:
         self._inp_str = inp_str
         if do_validation:
             self._validate_input()
         self._populate_data()
 
 
-# endregion: input file processing methods
+# region: NLDM related parsing
+def ret_name_and_logic_type(cell_line: str) -> tuple[str, str]:
+    """ Extract cell name and logic type from a liberty cell definition line like:
+            -> "cell (NAND2_X1) {"
+
+    Args:
+        cell_line (str): A line from a liberty file that defines a cell, expected to be in the format "cell (CellName) {"
+
+    Raises:
+        UnexpectedInputStringFormat:    
+            - If the line does not start with "cell"
+            - If the line does not contain parentheses around the cell name
+            - If the cell name does not contain any alphabetic characters to derive logic type from
+            - If any other error occurs during parsing, a generic error message with details is raised as UnexpectedInputStringFormat
+
+    Returns:
+        tuple[str, str]: A tuple containing:
+            - name (str): The extracted cell name (e.g., "NAND2_X1")
+            - logic_type (str): The derived logic type in uppercase (e.g., "NAND")
+
+    """    
+    try:
+        line = cell_line.lower().strip()
+        if not line.startswith(TXT_CELL):
+            raise UnexpectedInputStringFormat("Not a cell definition line")
+
+        open_parenthesis = line.find("(")
+        close_parenthesis = line.find(")", open_parenthesis + 1)
+        if open_parenthesis == -1 or close_parenthesis == -1: # closen paren can be -1 only if '{' is missing.
+            raise UnexpectedInputStringFormat("Cell line missing parentheses")
+
+        #derive anme
+        raw_name = line[open_parenthesis + 1 : close_parenthesis]
+        name = raw_name.strip().upper()
+
+        #derive logic type - by taking characters from the start of the name until we hit a non-alphabetic character
+        base = raw_name.split("_", 1)[0]
+        logic_chars = []
+        for ch in base:
+            if ch.isalpha():
+                logic_chars.append(ch)
+            else:
+                break
+        logic_type = "".join(logic_chars).upper()
+
+        if not logic_type:
+            raise UnexpectedInputStringFormat("Could not derive logic type from cell name")
+
+        return (name, logic_type)
+    except UnexpectedInputStringFormat:
+        raise
+    except Exception as e:
+        raise UnexpectedInputStringFormat(f"Error parsing cell name: {e}") from e
+
+
+def ret_value_for_label(line: str) -> float:
+    """ Extract capacitance value from a line in the format "capacitance : value;" 
+            (case-insensitive, with optional whitespace)
+        - sample input:
+            "capacitance : 0.123;"
+
+    Args:
+        line (str): A line from a liberty file expected to define capacitance, e.g., 
+        "capacitance : 0.123;"
+
+    Raises:
+        UnexpectedInputStringFormat: 
+            - If the line does not contain the word "capacitance"
+            - If the line does not contain a colon separating the label and value
+            - If the value cannot be converted to a float
+            - If any other error occurs during parsing, a generic error message with details is raised as UnexpectedInputStringFormat
+
+    Returns:
+        float: capacitance value
+    """    
+    try:
+        text = line.strip().lower()
+        if TXT_CAPACITANCE  not in text:
+            raise UnexpectedInputStringFormat("Line does not contain capacitance")
+
+        if ":"  not in text:
+            raise UnexpectedInputStringFormat("Unexpected capacitance line format")
+
+        left, sep, right = text.partition(":")
+        if right.endswith(";"):
+            right = right[:-1].strip()
+
+        return float(right)
+    except ValueError as e:
+        raise UnexpectedInputStringFormat(f"Could not convert capacitance to float: {e}") from e
+
+
+def ret_nums_in_str(line: str) -> list[float]:
+    """ Extract a list of float values from a line containing quoted comma-separated values, e.g., '"0.1, 0.2, 0.3"'
+            - sample input line:
+                => index_1 ("0.00117378,0.00472397,0.0171859,0.0409838,0.0780596,0.130081,0.198535");
+    Args:
+        line (str): A line from a liberty file containing quoted comma-separated values
+
+    Raises:
+        UnexpectedInputStringFormat: 
+            - If the line does not contain properly quoted comma-separated values
+            - If any of the values cannot be converted to a float
+
+    Returns:
+        list[float]: A list of extracted float values
+    """    
+    try:
+        text = line.strip()
+        first_quote = text.find('"')
+        last_quote = text.rfind('"')
+        if first_quote == -1 or last_quote == -1 or last_quote <= first_quote:
+            raise UnexpectedInputStringFormat("Index line missing quoted values")
+
+        # extract the substring between the quotes characters and split on commas
+        actual_str = text[first_quote + 1 : last_quote] 
+        tokens = [token.strip() for token in actual_str.split(",") if token.strip() != ""]
+
+        return [float(token) for token in tokens]
+    
+    except ValueError as e:
+        raise UnexpectedInputStringFormat(f"Could not convert index to floats: {e}") from e
+
+
+def ret_2d_list_from_str(lines: list[str]) -> list[list[float]]:
+    """ Extract a 2D list of float values from a block of lines containing quoted comma-separated values, e.g.,
+        - sample input lines:
+            => ["0.00474878,0.00814768,0.0123804,0.0208480,0.0377848,0.0716838,0.139435", 
+                "0.00475427,0.00814708,0.0123814,0.0208446,0.0377762,0.0716641,0.139428",
+                "0.00779760,0.00997800,0.0130179,0.0208500,0.0378031,0.0716776,0.139430",
+                "0.0122628,0.0156758,0.0191464,0.0247382,0.0382858,0.0716833,0.139437",
+                "0.0178385,0.0220827,0.0266676,0.0342116,0.0458454,0.0726908,0.139429",
+                "0.0249336,0.0298045,0.0352101,0.0445099,0.0592803,0.0822832,0.139806",
+                "0.0337631,0.0391600,0.0452534,0.0559346,0.0736025,0.100571,0.148264"]d
+    Args:
+        lines (list[str]): A list of lines from a liberty file containing quoted comma-separated values in section: values ( .... )
+
+    Raises:
+        UnexpectedInputStringFormat: 
+            - If any line does not contain properly quoted comma-separated values
+            - If any of the values cannot be converted to a float
+
+    Returns:
+        list[list[float]]: 
+            - A 2D list of extracted float values, where each inner list corresponds to the values extracted 
+                from one line in the input block
+    """    
+    rows: list[list[float]] = [] # to store the 2D list
+    for line in lines:
+        line = line.strip()
+        first_quote = line.find('"')
+        last_quote = line.rfind('"')
+        if first_quote == -1 or last_quote == -1 or last_quote <= first_quote:
+            continue
+
+        inner = line[first_quote + 1 : last_quote]
+        tokens = [token.strip() for token in inner.split(",") if token.strip() != ""]
+        if not tokens:
+            continue
+
+        try:
+            row = [float(token) for token in tokens]
+        except ValueError as e:
+            raise UnexpectedInputStringFormat(f"Error parsing values row: {e}") from e
+        rows.append(row)
+
+    return rows
+
 
 if __name__ == "__main__":
     verify_file_path("c7552.bench")
