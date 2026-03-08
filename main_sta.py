@@ -1,102 +1,19 @@
-# main_sta.py
-# Phase-2 STA using Netlist + NLDM, modeled after reference.py
-
+# imports
 from argparse import ArgumentParser
 from collections import deque
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 
-from parser import Netlist, NLDM, CellNLDM  # your Phase-1 code
-from proj_utils import ENCODING_FORMAT_DEFAULT
+# custom imports
+from parser import Netlist, NLDM, CellNLDM
+from proj_utils import ENCODING_FORMAT_DEFAULT, lut_lookup_2d
 
 
-# ---------------------------------------------------------------------------
-# Global STA constants (match reference)
-# ---------------------------------------------------------------------------
-
+#CONSTANTS
 PI_ARRIVAL_NS: float = 0.0
 PI_SLEW_PS: float = 2.0
 PI_SLEW_NS: float = PI_SLEW_PS / 1000.0  # LUT time unit is ns
 
-
-# ---------------------------------------------------------------------------
-# Helper: 2D LUT interpolation (Appendix-3)
-# ---------------------------------------------------------------------------
-
-def _find_bounds(vals: List[float], x: float) -> Tuple[int, int]:
-    """
-    Return (lo, hi) such that vals[lo] <= x < vals[hi].
-    Clamp at endpoints (lo==hi) if x outside range.
-    """
-    if not vals:
-        return (0, 0)
-
-    if x <= vals[0]:
-        return (0, 0)
-
-    n = len(vals)
-    for i in range(1, n):
-        if x < vals[i]:
-            return (i - 1, i)
-
-    return (n - 1, n - 1)
-
-
-def lut_lookup_2d(
-    idx1: List[float],
-    idx2: List[float],
-    table: List[List[float]],
-    tau_ns: float,
-    cap_ff: float,
-) -> float:
-    """
-    Bilinear 2D interpolation on NLDM LUT.
-    idx1 -> tau (ns), idx2 -> Cload (fF).
-    """
-    if not idx1 or not idx2 or not table:
-        raise ValueError("Empty LUT indices/table")
-
-    i1, i2 = _find_bounds(idx1, tau_ns)
-    j1, j2 = _find_bounds(idx2, cap_ff)
-
-    v11 = table[i1][j1]
-    if i1 == i2 and j1 == j2:
-        return v11
-
-    # 1D along cap
-    if i1 == i2 and j1 != j2:
-        c1, c2 = idx2[j1], idx2[j2]
-        if c2 == c1:
-            return v11
-        v12 = table[i1][j2]
-        return v11 + (v12 - v11) * (cap_ff - c1) / (c2 - c1)
-
-    # 1D along tau
-    if j1 == j2 and i1 != i2:
-        t1, t2 = idx1[i1], idx1[i2]
-        if t2 == t1:
-            return v11
-        v21 = table[i2][j1]
-        return v11 + (v21 - v11) * (tau_ns - t1) / (t2 - t1)
-
-    # True 2D bilinear
-    t1, t2 = idx1[i1], idx1[i2]
-    c1, c2 = idx2[j1], idx2[j2]
-    if (t2 == t1) or (c2 == c1):
-        return v11
-
-    v12 = table[i1][j2]
-    v21 = table[i2][j1]
-    v22 = table[i2][j2]
-
-    num = (
-        v11 * (c2 - cap_ff) * (t2 - tau_ns)
-        + v12 * (cap_ff - c1) * (t2 - tau_ns)
-        + v21 * (c2 - cap_ff) * (tau_ns - t1)
-        + v22 * (cap_ff - c1) * (tau_ns - t1)
-    )
-    den = (c2 - c1) * (t2 - t1)
-    return num / den
 
 
 # ---------------------------------------------------------------------------

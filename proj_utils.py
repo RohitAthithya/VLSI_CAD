@@ -486,6 +486,112 @@ def ret_2d_list_from_str(lines: list[str]) -> list[list[float]]:
 
     return rows
 
+# region: interpolation related helper functions
+def find_bounds(vals: list[float], x: float) -> tuple[int, int]:
+    """ Helper function to find the indices of the two values in vals that bound x (i.e., the largest value in vals that is <= x and the smallest value in vals that is >= x).
+
+    Args:
+        vals (list[float]): A list of float values sorted in ascending order
+        x (float): The value for which to find the bounding indices
+        
+    Returns:
+        tuple[int, int]: A tuple containing the indices of the bounding values in vals:
+            - If x is less than or equal to the smallest value in vals, returns (0, 0)
+            - If x is greater than or equal to the largest value in vals, returns (n-1, n-1) where n is the length of vals
+            - Otherwise, returns (i-1, i) where vals[i-1] <= x < vals[i]
+
+    """
+    if not vals:
+        return (0, 0)
+
+    if x <= vals[0]:
+        return (0, 0)
+
+    n = len(vals)
+    for i in range(1, n):
+        if x < vals[i]:
+            return (i - 1, i)
+
+    return (n - 1, n - 1)
+
+
+def lut_lookup_2d(
+    idx1: list[float],
+    idx2: list[float],
+    table: list[list[float]],
+    tau_ns: float,
+    cap_ff: float,
+) -> float:
+    """
+    Perform 2D LUT lookup with bilinear interpolation for the given indices and table.
+
+    Args:
+        - idx1: List of float values representing the first dimension indices (e.g., time)
+        - idx2: List of float values representing the second dimension indices (e.g., capacitance)
+        - table: 2D list of float values representing the LUT values corresponding to the indices
+        - tau_ns: The value along the first dimension for which to perform the lookup
+        - cap_ff: The value along the second dimension for which to perform the lookup
+    
+    Returns:
+        - The interpolated LUT value corresponding to the input tau_ns and cap_ff based on the provided indices and table.
+    """
+    if not idx1 or not idx2 or not table:
+        raise ValueError("Empty LUT indices/table")
+
+    i1, i2 = find_bounds(idx1, tau_ns)
+    j1, j2 = find_bounds(idx2, cap_ff)
+
+    v11 = table[i1][j1]
+    if i1 == i2 and j1 == j2:
+        return v11
+
+    # 1D along cap
+    if i1 == i2 and j1 != j2:
+        c1, c2 = idx2[j1], idx2[j2]
+        if c2 == c1:
+            return v11
+        v12 = table[i1][j2]
+        return v11 + (v12 - v11) * (cap_ff - c1) / (c2 - c1)
+
+    # 1D along tau
+    if j1 == j2 and i1 != i2:
+        t1, t2 = idx1[i1], idx1[i2]
+        if t2 == t1:
+            return v11
+        v21 = table[i2][j1]
+        return v11 + (v21 - v11) * (tau_ns - t1) / (t2 - t1)
+
+    # True 2D bilinear
+    t1, t2 = idx1[i1], idx1[i2]
+    c1, c2 = idx2[j1], idx2[j2]
+    if (t2 == t1) or (c2 == c1):
+        return v11
+
+    v12 = table[i1][j2]
+    v21 = table[i2][j1]
+    v22 = table[i2][j2]
+    
+    # bilinear interpolation formula
+    num = (
+        v11 * (c2 - cap_ff) * (t2 - tau_ns)
+        + v12 * (cap_ff - c1) * (t2 - tau_ns)
+        + v21 * (c2 - cap_ff) * (tau_ns - t1)
+        + v22 * (cap_ff - c1) * (tau_ns - t1)
+    )
+    den = (c2 - c1) * (t2 - t1)
+    interpolated_value = num / den
+
+    return interpolated_value
+
+
+
+
+
+
+
+
+
+
 
 if __name__ == "__main__":
     verify_file_path("c7552.bench")
