@@ -444,7 +444,7 @@ def ret_nums_in_str(line: str) -> list[float]:
         raise UnexpectedInputStringFormat(f"Could not convert index to floats: {e}") from e
 
 
-def parse_values_block(lines: list[str]) -> list[list[float]]:
+def ret_2d_list_from_str(lines: list[str]) -> list[list[float]]:
     """ Extract a 2D list of float values from a block of lines containing quoted comma-separated values, e.g.,
         - sample input lines:
             => ["0.00474878,0.00814768,0.0123804,0.0208480,0.0377848,0.0716838,0.139435", 
