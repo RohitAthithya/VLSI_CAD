@@ -21,8 +21,6 @@ TXT_FILE_PRESENT = "File present at given path, user can read!"
 TXT_FILE_MISSING = "File not found at given path"
 TXT_CELL = "cell"
 TXT_CAPACITANCE = "capacitance"
-TXT_INDEX_1 = "index_1" 
-TXT_INDEX_2 = "index_2"
 
 
 # CUSTOM EXCEPTIONS:
