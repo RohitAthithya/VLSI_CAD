@@ -584,7 +584,16 @@ def lut_lookup_2d(
     return interpolated_value
 
 
-
+def fmt_ps(x_ns: float) -> str:
+    import math
+    if math.isinf(x_ns):
+        return "inf"
+    ps = x_ns * 1000.0
+    s = f"{ps:.5f}"
+    s = s.rstrip("0").rstrip(".")
+    if s == "-0":
+        s = "0"
+    return s
 
 
 
