@@ -219,7 +219,7 @@ class CellNLDM:
 
 
 def build_arg_parser() -> ArgumentParser:
-    """Define the args in command line to run this parser.
+    """ Define the args in command line to run this parser.
 
     Returns:
         ArgumentParser: _description_

@@ -23,10 +23,10 @@ TXT_FILE_MISSING = "File not found at given path"
 
 # CUSTOM EXCEPTIONS:
 class UnexpectedInputStringFormat(Exception):
-    def __init__(self, message="Input string was of unexpected format"):
+    def __init__(self, message: str = "Input string was of unexpected format"):
         super().__init__(message)
 class UnexpectedFileFormatError(Exception):
-    def __init__(self, message="Input File was of unexpected format"):
+    def __init__(self, message: str = "Input File was of unexpected format"):
         super().__init__(message)
 
 
@@ -247,32 +247,15 @@ class NodeInfo:
         self.gate_name: str = str()
         # if user pases any randomn object the validate input is gonna throw it of!
         self._inp_str: str = inp_str
-        self.gate_number = ""
+        self.gate_number: str = ""
 
-        #  self.name = ""
-        #  self.outname = ""
-        #  self.Cload = 0.0
-        #  self.inputs = []  #list of handles to the fanin nodes of this node
-        #  self.outputs =[]  #list of handles to the fanout nodes of this node
-        #     self.Tau_in = []  # array/list of input slews (for all inputs to
-        #     the gate), to be used for STA
-        #             self.inp_arrival = []  # array/list of input arrival times for
-        #     input transitions (ignore rise or fall)
-        #             self.outp_arrival = []  # array/list of output arrival times,
-        #     outp_arrival = inp_arrival + cell_delay
-        #             self.max_out_arrival = 0.0  # arrival time at the output of this
-        #     gate using max on (inp_arrival +
-        #     cell_delay)
-        #  self.Tau_out = 0.0  # Resulting output sle
-
-        # TODO: create the getters for the members but no setters
         if self._inp_str.lower() != "default":
             # if input is not default then process
             if do_validation:
                 self._validate_input()
             self._populate_data()
 
-    def _validate_input(self):
+    def _validate_input(self) -> None:
         if not isinstance(self._inp_str, str):
             raise UnexpectedInputStringFormat("Input must be a string")
 
@@ -302,7 +285,7 @@ class NodeInfo:
         if not re_fullmatch(r"[A-Za-z]{2,}", gate_name):
             raise UnexpectedInputStringFormat("Input string is of unexpected format!")
 
-    def _populate_data(self):
+    def _populate_data(self) -> None:
         processed_inp_str = self._inp_str.strip()
         left, right = processed_inp_str.split("=", 1)
         left, right = left.strip(), right.strip()
@@ -323,17 +306,107 @@ class NodeInfo:
         # input node list - reuse existing helper
         ok, result = ret_node_number_list(processed_inp_str)
         if not ok:
-            raise UnexpectedInputStringFormat(result)
-        self.input_node_list = result
+            raise UnexpectedInputStringFormat(str(result))
+        self.input_node_list = [str(x) for x in result]
 
-    def store_info_from_string(self, inp_str: str, do_validation: bool = False):
+    def store_info_from_string(self, inp_str: str, do_validation: bool = False) -> None:
         self._inp_str = inp_str
         if do_validation:
             self._validate_input()
         self._populate_data()
 
 
-# endregion: input file processing methods
+# region: NLDM related parsing
+def ret_name_and_logic_type(cell_line: str) -> tuple[str, str]:
+    """Extract (cell_name, logic_type) from a 'cell (NAME) {' line."""
+    try:
+        line = cell_line.strip()
+        if not line.startswith("cell"):
+            raise UnexpectedInputStringFormat("Not a cell definition line")
+
+        open_paren = line.find("(")
+        close_paren = line.find(")", open_paren + 1)
+        if open_paren == -1 or close_paren == -1:
+            raise UnexpectedInputStringFormat("Cell line missing parentheses")
+
+        raw_name = line[open_paren + 1 : close_paren].strip()
+        name = raw_name
+
+        base = raw_name.split("_", 1)[0]
+        logic_chars = []
+        for ch in base:
+            if ch.isalpha():
+                logic_chars.append(ch)
+            else:
+                break
+        logic_type = "".join(logic_chars).upper()
+
+        if not logic_type:
+            raise UnexpectedInputStringFormat("Could not derive logic type from cell name")
+
+        return name, logic_type
+    except UnexpectedInputStringFormat:
+        raise
+    except Exception as e:
+        raise UnexpectedInputStringFormat(f"Error parsing cell name: {e}") from e
+
+
+def parse_capacitance(line: str) -> float:
+    """Extract numeric capacitance from a 'capacitance : value;' line."""
+    try:
+        text = line.strip()
+        if "capacitance" not in text:
+            raise UnexpectedInputStringFormat("Line does not contain capacitance")
+
+        parts = text.split(":", 1)
+        if len(parts) != 2:
+            raise UnexpectedInputStringFormat("Unexpected capacitance line format")
+
+        right = parts[1].strip()
+        if right.endswith(";"):
+            right = right[:-1].strip()
+
+        return float(right)
+    except ValueError as e:
+        raise UnexpectedInputStringFormat(f"Could not convert capacitance to float: {e}") from e
+
+
+def parse_index_list(line: str) -> list[float]:
+    """Extract list of floats from an index_1 / index_2 line with quoted CSV."""
+    try:
+        text = line.strip()
+        first_quote = text.find('"')
+        last_quote = text.rfind('"')
+        if first_quote == -1 or last_quote == -1 or last_quote <= first_quote:
+            raise UnexpectedInputStringFormat("Index line missing quoted values")
+
+        inner = text[first_quote + 1 : last_quote]
+        tokens = [tok.strip() for tok in inner.split(",") if tok.strip() != ""]
+        return [float(tok) for tok in tokens]
+    except ValueError as e:
+        raise UnexpectedInputStringFormat(f"Could not convert index to floats: {e}") from e
+
+
+def parse_values_block(lines: list[str]) -> list[list[float]]:
+    """Parse a liberty 'values (...)' multi-line block into a 2D list of floats."""
+    rows: list[list[float]] = []
+    for line in lines:
+        text = line.strip()
+        first_quote = text.find('"')
+        last_quote = text.rfind('"')
+        if first_quote == -1 or last_quote == -1 or last_quote <= first_quote:
+            continue
+        inner = text[first_quote + 1 : last_quote]
+        tokens = [tok.strip() for tok in inner.split(",") if tok.strip() != ""]
+        if not tokens:
+            continue
+        try:
+            row = [float(tok) for tok in tokens]
+        except ValueError as e:
+            raise UnexpectedInputStringFormat(f"Error parsing values row: {e}") from e
+        rows.append(row)
+    return rows
+
 
 if __name__ == "__main__":
     verify_file_path("c7552.bench")
