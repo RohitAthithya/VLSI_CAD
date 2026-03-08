@@ -599,6 +599,5 @@ def main(file_name=""):
 
 if __name__ == "__main__":
     file_name = "sample_NLDM.lib"
-    exit(-1)
-    # main(file_name)
+    main(file_name)
     # main()
