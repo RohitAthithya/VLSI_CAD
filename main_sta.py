@@ -2,7 +2,7 @@
 from argparse import ArgumentParser
 from collections import deque
 from pathlib import Path
-from typing import Optional
+
 import math, random
 
 # custom imports
@@ -11,20 +11,20 @@ from proj_utils import ENCODING_FORMAT_DEFAULT, lut_lookup_2d, fmt_ps
 
 
 #CONSTANTS
-PI_ARRIVAL_NS: float = 0.0
-PI_SLEW_PS: float = 2.0
-PI_SLEW_NS: float = PI_SLEW_PS / 1000.0  # LUT time unit is ns
+PI_ARRIVAL_NS = 0.0
+PI_SLEW_PS = 2.0
+PI_SLEW_NS = PI_SLEW_PS / 1000.0  # LUT time unit is ns
 
 
-def _normalize_gate_type(gate_type: str) -> str:
-    """ Normalize gate type strings to canonical forms (e.g., INV, BUF).
+def _normalize_gate_type(gate_type):
+    """Normalize gate type strings to canonical forms (e.g., INV, BUF).
 
     Args:
-        gate_type (str): The original gate type string from the netlist (e.g., "NOT", "INV", "BUFF", etc.)
+        gate_type: original gate type string from the netlist (e.g., "NOT", "INV").
 
     Returns:
-        str: The normalized gate type string (e.g., "INV" for NOT/INV, "BUF" for BUFF/BUF, or unchanged if not recognized).
-    """    
+        The normalized gate type string (e.g., "INV" or "BUF").
+    """
     gt = gate_type.upper().strip()
     if gt in {"NOT", "INV", "INVERTER"}:
         return "INV"
@@ -39,10 +39,10 @@ class CellLibrary:
         Provides methods to pick cells and query delay/slew.
     """
 
-    def __init__(self, nldm: NLDM) -> None:
-        self.cells_by_name: dict[str, CellNLDM] = {}
-        self.cells_by_sig: dict[tuple[str, int], CellNLDM] = {}
-        self.cells_by_logic: dict[str, list[CellNLDM]] = {}
+    def __init__(self, nldm):
+        self.cells_by_name = {}
+        self.cells_by_sig = {}
+        self.cells_by_logic = {}
 
         for name, cell in nldm.cells.items():
             self.cells_by_name[name] = cell
@@ -56,9 +56,9 @@ class CellLibrary:
             if key not in self.cells_by_sig:
                 self.cells_by_sig[key] = cell
 
-        self.inv_cell: Optional[CellNLDM] = self._pick_inverter()
+        self.inv_cell = self._pick_inverter()
 
-    def _pick_inverter(self) -> Optional[CellNLDM]:
+    def _pick_inverter(self):
         inv_list = self.cells_by_logic.get("INV", [])
         if inv_list:
             return inv_list[0]
@@ -67,7 +67,7 @@ class CellLibrary:
                 return c
         return None
 
-    def pick_cell_for_gate(self, gate_type: str, n_inputs: int) -> CellNLDM:
+    def pick_cell_for_gate(self, gate_type, n_inputs):
         logic = _normalize_gate_type(gate_type)
 
         if logic == "INV":
@@ -87,18 +87,18 @@ class CellLibrary:
 
         raise KeyError(f"No NLDM cell found for gate type '{gate_type}' (normalized '{logic}').")
 
-    def input_cap_ff_for_gate(self, gate_type: str, n_inputs: int) -> float:
+    def input_cap_ff_for_gate(self, gate_type, n_inputs):
         cell = self.pick_cell_for_gate(gate_type, n_inputs)
         if cell.capacitance is None:
             raise ValueError(f"Cell '{cell.name}' missing capacitance.")
         return float(cell.capacitance)
 
-    def inv_cap_ff(self) -> float:
+    def inv_cap_ff(self):
         if self.inv_cell is None or self.inv_cell.capacitance is None:
             raise ValueError("Inverter capacitance missing; needed for PO load.")
         return float(self.inv_cell.capacitance)
 
-    def delay_ns(self, gate_type: str, n_inputs: int, tau_in_ns: float, cload_ff: float) -> float:
+    def delay_ns(self, gate_type, n_inputs, tau_in_ns, cload_ff):
         cell = self.pick_cell_for_gate(gate_type, n_inputs)
         if not cell.tau_in_vals or not cell.c_load_vals or not cell.delay_table:
             raise ValueError(f"Cell '{cell.name}' missing delay LUT data.")
@@ -109,7 +109,7 @@ class CellLibrary:
             base *= (float(n_inputs) / 2.0)
         return base
 
-    def slew_ns(self, gate_type: str, n_inputs: int, tau_in_ns: float, cload_ff: float) -> float:
+    def slew_ns(self, gate_type, n_inputs, tau_in_ns, cload_ff):
         cell = self.pick_cell_for_gate(gate_type, n_inputs)
         if not cell.tau_in_vals or not cell.c_load_vals or not cell.slew_table:
             raise ValueError(f"Cell '{cell.name}' missing slew LUT data.")
@@ -136,64 +136,56 @@ class GateNode:
 
     """
 
-    def __init__(self, out_net: str, gate_type: str, input_nets: list[str]) -> None:
-        """ Initialize a GateNode with its output net, gate type, and input nets.
+    def __init__(self, out_net, gate_type, input_nets):
+        """Initialize a GateNode with its output net, gate type, and input nets.
 
         Args:
-            out_net (str): The net driven by this gate (also serves as its unique identifier).
-            gate_type (str): The logic type of the gate (e.g., NAND, NOR, INV).
-            input_nets (list[str]): A list of nets that drive this gate (the fanin nets).
-        """        
+            out_net: net driven by this gate (unique identifier).
+            gate_type: logic type of the gate (e.g., NAND, NOR, INV).
+            input_nets: list of nets that drive this gate.
+        """
         self.out_net = out_net
-        self.gate_type = gate_type  
+        self.gate_type = gate_type
         self.input_nets = input_nets
 
-        self.fanin: list[str] = []   
-        self.fanout: list[str] = []  
+        self.fanin = []
+        self.fanout = []
 
-        self.cload_ff: float = 0.0
-        self.arrival_out_ns: float = 0.0
-        self.tau_out_ns: float = PI_SLEW_NS
-        self.req_out_ns: float = float("inf")
-        self.slack_ns: float = float("inf")
-        self.path_delays_ns: list[float] = []
-        self.path_slews_ns: list[float] = []
-        self.max_input_idx: int = 0
+        self.cload_ff = 0.0
+        self.arrival_out_ns = 0.0
+        self.tau_out_ns = PI_SLEW_NS
+        self.req_out_ns = float("inf")
+        self.slack_ns = float("inf")
+        self.path_delays_ns = []
+        self.path_slews_ns = []
+        self.max_input_idx = 0
 
     @property
-    def desc(self) -> str:
+    def desc(self):
         return f"{self.gate_type}-{self.out_net}"
 
 
-def netlist_to_gate_nodes(netlist: Netlist) -> tuple[list[str], list[str], list[GateNode]]:
-    """ Convert the parsed netlist into a list of GateNode objects, along with primary input and output lists.
+def netlist_to_gate_nodes(netlist):
+    """Convert the parsed netlist into GateNode objects plus primary input/output lists.
 
     Args:
-        netlist (Netlist): The parsed netlist object containing gates, primary inputs, and primary outputs.
+        netlist: parsed Netlist object containing gates, inputs, and outputs.
 
     Returns:
-        tuple[list[str], list[str], list[GateNode]]:   A tuple containing:
-            - A list of primary input net names (e.g., ["1", "2", ...])
-            - A list of primary output net names (e.g., ["22", "23", ...])
-            - A list of GateNode objects representing the gates in the circuit, with their connectivity and types.
-    """    
-    primary_inputs = list(netlist.input_pins.keys())   
-    primary_outputs = list(netlist.output_pins.keys()) 
+        A tuple (primary_inputs, primary_outputs, gates).
+    """
+    primary_inputs = list(netlist.input_pins.keys())
+    primary_outputs = list(netlist.output_pins.keys())
 
-    gates: list[GateNode] = []
+    gates = []
     for gate_name, gate in netlist.gates.items():
-        # gate.output_wire is the net name, gate.gate_type logic type, gate.input_wires
         gnode = GateNode(out_net=gate.output_wire, gate_type=gate.gate_type, input_nets=gate.input_wires)
         gates.append(gnode)
 
     return primary_inputs, primary_outputs, gates
 
 
-def build_connectivity(
-    primary_inputs: list[str],
-    primary_outputs: list[str],
-    gates: list[GateNode],
-) -> None:
+def build_connectivity(primary_inputs, primary_outputs, gates):
     """ 
         Build the fanin and fanout lists for each gate, as well as the primary input and output connections.
         This function populates the 'fanin' and 'fanout' attributes of each GateNode based on the input and output nets,
@@ -211,12 +203,12 @@ def build_connectivity(
     pi_set = set(primary_inputs)
     po_set = set(primary_outputs)
 
-    gate_by_net: dict[str, GateNode] = {g.out_net: g for g in gates}
+    gate_by_net = {g.out_net: g for g in gates}
 
 
     for gate in gates:
-        inputs_first: list[str] = []
-        gates_second: list[str] = []
+        inputs_first = []
+        gates_second = []
 
         for in_net in gate.input_nets:
             if in_net in pi_set:
@@ -241,15 +233,11 @@ def build_connectivity(
             gate.fanout.append(f"OUTPUT-{gate.out_net}")
 
 
-def build_graph(
-    primary_inputs: list[str],
-    primary_outputs: list[str],
-    gates: list[GateNode],
-) -> tuple[dict[str, GateNode], dict[str, list[GateNode]], dict[str, int]]:
-    gate_by_net: dict[str, GateNode] = {g.out_net: g for g in gates}
+def build_graph(primary_inputs, primary_outputs, gates):
+    gate_by_net = {g.out_net: g for g in gates}
 
-    adj: dict[str, list[GateNode]] = {}
-    indeg: dict[str, int] = {g.out_net: 0 for g in gates}
+    adj = {}
+    indeg = {g.out_net: 0 for g in gates}
 
     for sink in gates:
         for in_net in sink.input_nets:
@@ -268,13 +256,13 @@ def build_graph(
     return gate_by_net, adj, indeg
 
 
-def topological_order(gates: list[GateNode], adj: dict[str, list[GateNode]], indeg: dict[str, int]) -> list[GateNode]:
+def topological_order(gates, adj, indeg):
     queue = deque()
     for gate in gates:
         if indeg.get(gate.out_net, 0) == 0:
             queue.append(gate)
 
-    topo: list[GateNode] = []
+    topo = []
     while queue:
         cur = queue.popleft()
         topo.append(cur)
@@ -288,16 +276,11 @@ def topological_order(gates: list[GateNode], adj: dict[str, list[GateNode]], ind
     return topo
 
 
-def compute_load_caps(
-    primary_outputs: list[str],
-    gates: list[GateNode],
-    gate_by_net: dict[str, GateNode],
-    lib: CellLibrary,
-) -> None:
+def compute_load_caps(primary_outputs, gates, gate_by_net, lib):
     for g in gates:
         g.cload_ff = 0.0
 
-    has_gate_fanout: dict[str, bool] = {g.out_net: False for g in gates}
+    has_gate_fanout = {g.out_net: False for g in gates}
 
     # Sum gate input caps
     for sink in gates:
@@ -316,13 +299,7 @@ def compute_load_caps(
             g.cload_ff += extra
 
 
-def forward_sta(
-    primary_inputs: list[str],
-    primary_outputs: list[str],
-    topo: list[GateNode],
-    gate_by_net: dict[str, GateNode],
-    lib: CellLibrary,
-) -> tuple[dict[str, float], float]:
+def forward_sta(primary_inputs, primary_outputs, topo, gate_by_net, lib):
     pi_set = set(primary_inputs)
 
     for gate in topo:
@@ -366,7 +343,7 @@ def forward_sta(
         gate.tau_out_ns = best_tau
         gate.max_input_idx = best_idx
 
-    arrival_po_ns: dict[str, float] = {}
+    arrival_po_ns = {}
     ckt_delay_ns = 0.0
     for primary_output in primary_outputs:
         drv = gate_by_net.get(primary_output)
@@ -378,20 +355,13 @@ def forward_sta(
     return arrival_po_ns, ckt_delay_ns
 
 
-def backward_sta(
-    primary_inputs: list[str],
-    primary_outputs: list[str],
-    topo: list[GateNode],
-    gate_by_net: dict[str, GateNode],
-    arrival_po_ns: dict[str, float],
-    circuit_delay_ns: float,
-) -> tuple[dict[str, float], dict[str, float], float]:
+def backward_sta(primary_inputs, primary_outputs, topo, gate_by_net, arrival_po_ns, circuit_delay_ns):
     import math
 
     pi_set = set(primary_inputs)
     required_po_ns = 1.1 * circuit_delay_ns
 
-    req_pi_ns: dict[str, float] = {pi: float("inf") for pi in primary_inputs}
+    req_pi_ns = {pi: float("inf") for pi in primary_inputs}
 
     for g in topo:
         g.req_out_ns = float("inf")
@@ -418,7 +388,7 @@ def backward_sta(
                 if drv is not None:
                     drv.req_out_ns = min(drv.req_out_ns, req_at_driver)
 
-    slack_po_ns: dict[str, float] = {}
+    slack_po_ns = {}
     for po in primary_outputs:
         slack_po_ns[po] = required_po_ns - arrival_po_ns.get(po, 0.0)
 
@@ -434,21 +404,14 @@ def backward_sta(
 
 
 
-def find_critical_path(
-    primary_inputs: list[str],
-    primary_outputs: list[str],
-    gate_by_net: dict[str, GateNode],
-    req_pi_ns: dict[str, float],
-    slack_po_ns: dict[str, float],
-    seed: int = 0,
-) -> list[str]:
+def find_critical_path(primary_inputs, primary_outputs, gate_by_net, req_pi_ns, slack_po_ns, seed=0):
     
 
     rng = random.Random(seed)
     pi_set = set(primary_inputs)
 
     # slack lookup
-    slack_desc: dict[str, float] = {}
+    slack_desc = {}
     for pi in primary_inputs:
         req = req_pi_ns.get(pi, float("inf"))
         slack_desc[f"INPUT-{pi}"] = (req - 0.0) if (not math.isinf(req)) else float("inf")
@@ -457,7 +420,7 @@ def find_critical_path(
 
     # choose PO with minimum slack
     best_slack = float("inf")
-    ties: list[str] = []
+    ties = []
     for po in primary_outputs:
         s = slack_po_ns.get(po, float("inf"))
         if s < best_slack:
@@ -470,7 +433,7 @@ def find_critical_path(
         return []
 
     start_po = rng.choice(ties)
-    path_back: list[str] = [f"OUTPUT-{start_po}"]
+    path_back = [f"OUTPUT-{start_po}"]
 
     cur = gate_by_net.get(start_po)
     if cur is None:
@@ -481,8 +444,8 @@ def find_critical_path(
     path_back.append(cur.desc)
 
     while True:
-        best_pred_desc: Optional[str] = None
-        best_pred_gate: Optional[GateNode] = None
+        best_pred_desc = None
+        best_pred_gate = None
         best_pred_slack = float("inf")
 
         for in_net in cur.input_nets:
@@ -516,16 +479,7 @@ def find_critical_path(
     return list(reversed(path_back))
 
 
-def write_ckt_traversal(
-    out_path: Path,
-    primary_inputs: list[str],
-    primary_outputs: list[str],
-    gate_print_order: list[GateNode],
-    req_pi_ns: dict[str, float],
-    slack_po_ns: dict[str, float],
-    circuit_delay_ns: float,
-    critical_path: list[str],
-) -> None:
+def write_ckt_traversal(out_path, primary_inputs, primary_outputs, gate_print_order, req_pi_ns, slack_po_ns, circuit_delay_ns, critical_path):
     import math
 
     with out_path.open("w", encoding=ENCODING_FORMAT_DEFAULT) as w:
@@ -550,7 +504,7 @@ def write_ckt_traversal(
             w.write("None\n")
 
 
-def build_arg_parser() -> ArgumentParser:
+def build_arg_parser():
     p = ArgumentParser(description="Phase-2 STA using Netlist + NLDM")
     p.add_argument("--read_ckt", type=str, required=True, help="Path to .bench file")
     p.add_argument("--read_nldm", type=str, required=True, help="Path to .lib file")

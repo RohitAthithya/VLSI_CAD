@@ -23,84 +23,61 @@ NLDM_LINE_END_BLOCK = "}"
 
 
 class Gate:
-    """ Gate class to represent a logic gate in the netlist.
-    Attributes:
-        gate_type (str): The type of the gate (e.g., AND, OR, NOT).
-        output_wire (str): The output wire of the gate. also known as fanout(s).
-        input_wires (list[str]): The list of input wires to the gate. also known as fanin(s).
+    """Gate class to represent a logic gate in the netlist.
 
-        fanin (list[str]): The list of gates that feed into this gate. (updated based on connectivity)
-        fanout (list[str]): The list of gates that this gate feeds into. (updated based on connectivity)
-    """    
-    def __init__(self, gate_type: str, output_wire: str, input_wires: list[str]):
+    Attributes:
+        gate_type: The type of the gate (e.g., AND, OR, NOT).
+        output_wire: The output wire of the gate (fanout).
+        input_wires: The list of input wires to the gate (fanin).
+        fanin: The list of gates that feed into this gate (populated later).
+        fanout: The list of gates that this gate feeds into (populated later).
+    """
+    def __init__(self, gate_type, output_wire, input_wires):
         """ Initialize a gate with its type, output wire, and input wires.
 
         Args:
-            gate_type (str): _description_
-            output_wire (str): _description_
-            input_wires (list[str]): _description_
+            gate_type: gate type string
+            output_wire: output wire identifier
+            input_wires: list of input wire identifiers
         """        
-        self.gate_type: str = gate_type.upper()
-        self.output_wire: str = str(output_wire)
-        self.name: str = f"{self.gate_type}-{self.output_wire}"
-        self.input_wires: list[str] = [str(x) for x in input_wires]
-        self.fanin: list[str] = []
-        self.fanout: list[str] = []
+        self.gate_type = gate_type.upper()
+        self.output_wire = str(output_wire)
+        self.name = f"{self.gate_type}-{self.output_wire}"
+        self.input_wires = [str(x) for x in input_wires]
+        self.fanin = []
+        self.fanout = []
 
 
 class Netlist:
-    """ ## Netlist class to represent the netlist of a circuit parsed from a .bench file.
-    Note: A input to output traversal on the netlist provides the topological order of the gates in the circuit.
-    An output to input traversal provides the slack calculation order for static timing analysis.
+    """Netlist class to represent the netlist of a circuit parsed from a .bench file.
 
-    ### Attributes:
-        inp_file_path (Path):
-            - The path to the input .bench file.
-        input_pins (OrderedDict):
-            - A mapping of input node numbers to their names. (fanins)
-        output_pins (OrderedDict):
-            - A mapping of output node numbers to their names. (fanouts)
-        gates (OrderedDict):
-            - A mapping of gate names to their Gate objects.
-        wire_to_gate (dict):
-            - A mapping of wire numbers to the gate that produces them.
-        gate_type_counts (defaultdict):
-            - A count of each type of gate in the netlist.
-    
-    ### Methods:
-        __init__(self, bench_file_path: FilePath, verify=False): 
-            - Initializes the Netlist object by processing the .bench file and building connectivity.
-        process_bench_file(self, verify=False): 
-            - Reads the .bench file line by line, verifies the format, and builds the adjacency list.
-        process_input_info(self, line: str): 
-            - Processes a line that defines an input pin and updates the input_pins mapping.
-        process_output_info(self, line: str): 
-            - Processes a line that defines an output pin and updates the output_pins mapping.
-        process_node_info(self, line: str): 
-            - Processes a line that defines a gate and updates the gates mapping and wire_to_gate mapping.
-        build_connectivity(self): 
-            - Builds the fanin and fanout lists for each gate based on the input wires and output wires.
-        write_ckt_details(self, output_path:str|FilePath): 
-            - Writes details of the circuit to a specified output file, including counts of inputs, outputs, gate types, and connectivity information.
-    
-    ### Exceptions:
-        FileNotFoundError: 
-            Raised when the provided .bench file path is invalid.
-        UnexpectedInputStringFormat: 
-            Raised when a line in the .bench file does not conform to expected formats for input, output, or gate definitions.
+    Note: an input-to-output traversal provides topological order; output-to-input provides
+    the slack calculation order for static timing analysis.
 
-    ### example usage:
-        netlist = Netlist("c17.bench")
-        netlist.write_ckt_details("c17_details.txt")
+    Attributes:
+        inp_file_path: Path to the input .bench file.
+        input_pins: Mapping of input node numbers to their names.
+        output_pins: Mapping of output node numbers to their names.
+        gates: Mapping of gate names to their Gate objects.
+        wire_to_gate: Mapping of wire numbers to the gate that produces them.
+        gate_type_counts: Counts of each type of gate in the netlist.
 
-    """    
+    Methods:
+        Methods are provided to parse a .bench file, build connectivity, and write
+        a textual circuit summary to an output file.
+
+    Exceptions:
+        FileNotFoundError: Raised when the provided .bench file path is invalid.
+        UnexpectedInputStringFormat: Raised when a line in the .bench file does not
+            conform to the expected formats for input, output, or gate definitions.
+    """
     
-    def __init__(self, bench_file_path: FilePath, verify:bool=False) -> None:
+    def __init__(self, bench_file_path, verify=False):
         """ Initialize the Netlist object by processing the .bench file and building connectivity.
 
         Args:
-            bench_file_path (FilePath): The path to the .bench file to be processed.
-            verify (bool, optional): Whether to verify the format of each line. Defaults to False.
+            bench_file_path: The path to the .bench file to be processed.
+            verify: Whether to verify the format of each line. Defaults to False.
 
         Raises:
             FileNotFoundError: Raised when the provided .bench file path is invalid or does not follow the expected format.
@@ -109,18 +86,18 @@ class Netlist:
         if not ok:
             raise FileNotFoundError(msg)
 
-        self.inp_file_path: Path = Path(bench_file_path)
-        self.input_pins: OrderedDict[str, str] = OrderedDict()
-        self.output_pins: OrderedDict[str, str] = OrderedDict()
-        self.gates: OrderedDict[str, Gate] = OrderedDict()
-        self.wire_to_gate: dict[str, str] = {}
-        self.gate_type_counts: defaultdict[str, int] = defaultdict(int)
-        # self.warning_list: list[str] = list() # can be used to store warnings - instead of raising exceptions
+        self.inp_file_path = Path(bench_file_path)
+        self.input_pins = OrderedDict()
+        self.output_pins = OrderedDict()
+        self.gates = OrderedDict()
+        self.wire_to_gate = {}
+        self.gate_type_counts = defaultdict(int)
+        # self.warning_list = list()  # can be used to store warnings - instead of raising exceptions
 
         self.process_bench_file(verify=verify)
         self.build_connectivity()
 
-    def process_bench_file(self, verify=False) -> None:
+    def process_bench_file(self, verify=False):
         """Read the bench file line by line, verify the format and build the adjacency list!
 
         Args:
@@ -143,30 +120,28 @@ class Netlist:
             else:  # it must be a line with node info
                 self.process_node_info(line)
 
-    def process_input_info(self, line: str) -> None:
-        """ ## Processes a line that defines an input pin and updates the input_pins mapping.
+    def process_input_info(self, line):
+        """Process a line that defines an input pin and updates the input_pins mapping.
 
-        ### Args:
-            line (str): 
-                - line from bench file: 
-                - Expected format: 'INPUT(<node_num>)'
+        Args:
+            line: line from bench file, expected format: 'INPUT(<node_num>)'
 
-        ### Raises:
+        Raises:
             UnexpectedInputStringFormat: if line is of unexpected format
-        """        
+        """
         ok, node_num = ret_node_number(line)
         if not ok:
             raise UnexpectedInputStringFormat(node_num)
         self.input_pins[str(node_num)] = f"INPUT-{node_num}"
 
-    def process_output_info(self, line: str) -> None:
-        
+    def process_output_info(self, line):
+
         ok, node_num = ret_node_number(line)
         if not ok:
             raise UnexpectedInputStringFormat(node_num)
         self.output_pins[str(node_num)] = f"OUTPUT-{node_num}"
 
-    def process_node_info(self, line: str):
+    def process_node_info(self, line):
         node_info = NodeInfo(line, do_validation=True)
         gate = Gate(
             gate_type=node_info.gate_name,
@@ -199,7 +174,7 @@ class Netlist:
                 consumers.append(f"OUTPUT-{gate_wire}")
             gate.fanout = consumers
 
-    def write_ckt_details(self, output_path:str|FilePath):
+    def write_ckt_details(self, output_path):
         with open(output_path, "w", encoding=ENCODING_FORMAT_DEFAULT) as f:
             f.write(f"{len(self.input_pins)} primary inputs\n")
             f.write(f"{len(self.output_pins)} primary outputs\n")
@@ -223,45 +198,36 @@ class Netlist:
 
 
 class CellNLDM:
+    """Class to hold the NLDM data for a single cell.
+
+    Attributes:
+        name: Cell name, e.g., "NAND2_X1".
+        logic_type: Logic type derived from the cell name, e.g., "NAND".
+        capacitance: Input capacitance if provided in the file, otherwise None.
+        tau_in_vals: List of input slew (index_1) points.
+        c_load_vals: List of load capacitance (index_2) points.
+        delay_table: 2D list of delay values indexed by (tau_in, c_load).
+        slew_table: 2D list of slew values indexed by (tau_in, c_load).
+        delay_unit/slew_unit/cap_unit: Units for values (typically "ns" and "ff").
+
+    Methods:
+        Basic initialization is supported; interpolation helpers may be added later.
     """
-        Class to hold the NLDM data for a single cell.
+    def __init__(self, name, logic_type):
+        self.name = name              # e.g. NAND2_X1
+        self.logic_type = logic_type  # e.g. NAND
 
-        Attributes:
-            - name (str): The name of the cell (e.g., "NAND2_X1").
-            - logic_type (str): The logic type of the cell (e.g., "NAND").
-            - capacitance (float | None): The input capacitance of the cell, if specified.
-            - tau_in_vals (list[float]): The list of input slew values (index_1).
-            - c_load_vals (list[float]): The list of load capacitance values (index_2).
-            - delay_table (list[list[float]]): The 2D list of delay values
-                corresponding to the input slew and load capacitance indices.
-            - slew_table (list[list[float]]): The 2D list of output slew values
-                corresponding to the input slew and load capacitance indices.       
-            - delay_unit (str): The unit of the delay values (e.g., "ns").
-            - slew_unit (str): The unit of the slew values (e.g., "ns").
-            - cap_unit (str): The unit of the capacitance values (e.g., "ff").
-        
-        Methods:
-            __init__(self, name: str, logic_type: str): Initializes the CellNLDM object with its name and logic type.
-            (Phase-2) find_interpolated_value(...): Method to find interpolated delay/slew values for given input slew and load cap.
-            (Phase-2) delay(...): Method to get delay for specific input slew and load cap, using interpolation if necessary.
-            (Phase-2) slew(...): Method to get output slew for specific input slew and load cap, using interpolation if necessary.
+        self.capacitance = None  # input capacitance
 
-    """
-    def __init__(self, name: str, logic_type: str):
-        self.name: str = name              # e.g. NAND2_X1
-        self.logic_type: str = logic_type  # e.g. NAND
+        self.tau_in_vals = []     # index_1 (input slew)
+        self.c_load_vals = []     # index_2 (load cap)
 
-        self.capacitance: float | None = None  # input capacitance
+        self.delay_table = []  # delays[i][j]
+        self.slew_table = []   # slews[i][j]
 
-        self.tau_in_vals: list[float] = []     # index_1 (input slew)
-        self.c_load_vals: list[float] = []     # index_2 (load cap)
-
-        self.delay_table: list[list[float]] = []  # delays[i][j]
-        self.slew_table: list[list[float]] = []   # slews[i][j]
-
-        self.delay_unit: str = "ns"
-        self.slew_unit: str = "ns"
-        self.cap_unit: str = "ff"
+        self.delay_unit = "ns"
+        self.slew_unit = "ns"
+        self.cap_unit = "ff"
 
     # Phase-2 methods will be added later:
     # def find_interpolated_value(...), delay(...), slew(...)
@@ -272,9 +238,8 @@ class NLDM:
         Class to hold the entire NLDM library, with methods to parse from a liberty file and write out LUTs.
 
         Attributes:
-            cells (dict[str, CellNLDM]): Mapping from cell names to their NLDM data.
-            logic_to_cell_name (dict[str, str]): Mapping
-                from logic types (e.g., "NAND") to a preferred cell name (e.g., "NAND2_X1") for that logic type.
+            cells: Mapping from cell names to their NLDM data.
+            logic_to_cell_name: Mapping from logic types (e.g., "NAND") to a preferred cell name (e.g., "NAND2_X1").
         
         Methods:
             __init__(): Initializes the NLDM object with empty cell data.
@@ -290,22 +255,22 @@ class NLDM:
             Initialize the NLDM object with empty cell data.
 
         """        
-        self.cells: dict[str, CellNLDM] = OrderedDict()
-        self.logic_to_cell_name: dict[str, str] = {}
+        self.cells = OrderedDict()
+        self.logic_to_cell_name = {}
 
 
-    def parse_file(self, lib_path: str | FilePath) -> None:
+    def parse_file(self, lib_path):
         """Parse a liberty NLDM file and populate the cells dictionary.
 
         Assumes the liberty file is well-formed.
         """
         lib_path = Path(lib_path)
 
-        current_cell: CellNLDM | None = None
+        current_cell = None
         in_cell_delay = False
         in_output_slew = False
         collecting_values = False
-        value_lines: list[str] = []
+        value_lines = []
 
         for raw_line in chunked_line_reader(lib_path):
             line = raw_line.strip()
@@ -413,7 +378,7 @@ class NLDM:
                 value_lines = []
                 continue
 
-    def _validate_cell(self, cell: CellNLDM) -> None:
+    def _validate_cell(self, cell):
         """Sanity-check sizes of indices and tables for a single cell."""
         if cell is None:
             return
@@ -434,7 +399,7 @@ class NLDM:
                 )
                 
 
-    def write_delay_LUT(self, output_path: str | Path) -> None:
+    def write_delay_LUT(self, output_path):
         """Write delay LUTs to delay_LUT.txt-style file."""
         output_path = Path(output_path)
         with open(output_path, "w", encoding="utf-8") as f:
@@ -459,7 +424,7 @@ class NLDM:
                 for row in cell.delay_table:
                     f.write(",".join(str(v) for v in row) + ";\n")
 
-    def write_slew_LUT(self, output_path: str | Path) -> None:
+    def write_slew_LUT(self, output_path):
         """Write slew LUTs to slew_LUT.txt-style file."""
         output_path = Path(output_path)
         with open(output_path, "w", encoding="utf-8") as f:
@@ -484,11 +449,11 @@ class NLDM:
                 for row in cell.slew_table:
                     f.write(",".join(f"{v:.6f}" for v in row) + ";\n")
 
-    def __str__(self) -> str:
+    def __str__(self):
         """
             Return a human-readable summary of the NLDM library.
         """
-        lines: list[str] = []
+        lines = []
         lines.append(f"NLDM library with {len(self.cells)} cells.\n")
 
         for cell in self.cells.values():
@@ -547,12 +512,12 @@ class NLDM:
 
 
 
-def build_arg_parser() -> ArgumentParser:
-    """ Define the args in command line to run this parser.
+def build_arg_parser():
+    """Define the args in command line to run this parser.
 
     Returns:
-        ArgumentParser: _description_
-    """    
+        An ArgumentParser configured for this tool.
+    """
     parser = ArgumentParser(description="Netlist/NLDM parser")
     parser.add_argument("--read_ckt", type=str, help="Path to .bench file")
     parser.add_argument("--read_nldm", type=str, help="Path to .lib file")

@@ -1,14 +1,13 @@
 # imports
 from pathlib import Path
 from os.path import exists as os_exists
-from typing import NewType
 from re import fullmatch as re_fullmatch, findall as re_findall
 
-# custom type aliases
-ErrorMessage = NewType("ErrorMessage", str)
-SuccessMessage = NewType("SuccessMessage", str)
-InputFileText = NewType("InputFileText", list[str])
-FilePath = NewType("FilePath", str)
+# # custom type aliases
+# ErrorMessage = NewType("ErrorMessage", str)
+# SuccessMessage = NewType("SuccessMessage", str)
+# InputFileText = NewType("InputFileText", list)
+# FilePath = NewType("FilePath", str)
 
 
 # CONSTANTS
@@ -25,10 +24,10 @@ TXT_CAPACITANCE = "capacitance"
 
 # CUSTOM EXCEPTIONS:
 class UnexpectedInputStringFormat(Exception):
-    def __init__(self, message: str = "Input string was of unexpected format"):
+    def __init__(self, message="Input string was of unexpected format"):
         super().__init__(message)
 class UnexpectedFileFormatError(Exception):
-    def __init__(self, message: str = "Input File was of unexpected format"):
+    def __init__(self, message="Input File was of unexpected format"):
         super().__init__(message)
 
 
@@ -45,17 +44,16 @@ def print_dashed_lines(func):
 
 
 # region: file reading methods
-def verify_file_path(file_path: str | Path) -> tuple[bool, SuccessMessage | ErrorMessage]:
+def verify_file_path(file_path):
     """Verify if the input file path is a valid file
 
     Args:
-        file_path (str | Path): file path as string or name or Path variable
+        file_path: file path as a string or a Path object
 
     Returns:
-        tuple[bool, SuccessMessage | ErrorMessage]:
-            - if given file exists - returns : (True, "file present at given path")
-            - if given file does not exist - returns: (False, "File not found at given path : {path given}")
-            - if input is not of type string or Path - returns: (False, "Input must be of string or Path data type")
+        A tuple (ok, message):
+            - ok is True when the file exists, False otherwise
+            - message is a human-readable status string
     """
     try:
         file_path = Path(file_path)
@@ -67,9 +65,7 @@ def verify_file_path(file_path: str | Path) -> tuple[bool, SuccessMessage | Erro
 
 
 
-def chunked_line_reader(
-    file_path: Path, chunk_size=BIN_DATA_CHUNK_SIZE, encoding=ENCODING_FORMAT_DEFAULT
-):
+def chunked_line_reader(file_path, chunk_size=BIN_DATA_CHUNK_SIZE, encoding=ENCODING_FORMAT_DEFAULT):
     """Read input file and yield each line of the text
 
     Args:
@@ -79,7 +75,7 @@ def chunked_line_reader(
         encoding (str, optional):encoding format of file. Defaults to ENCODING_FORMAT_DEFAULT.
 
     Yields:
-        str: each line in the file @ path: file_path (input)
+        Each line from the file as a decoded string.
 
     Example usage:
         for line in chunked_line_reader("huge.txt"):
@@ -110,8 +106,8 @@ def chunked_line_reader(
 
 
 # region: input file processing methods
-def ret_node_number(inp_str: str) -> tuple[bool, int | ErrorMessage]:
-    """### From the input string, find the integers at the end string surrounded with brackets
+def ret_node_number(inp_str):
+    """From the input string, find the integer (or token) inside the last pair of round brackets.
     INPUT MUST HAVE A NUMBER ENCLOSED WITH ROUND BRACKETS PRESENT AT THE END OF THE STRING:
     ### POSSIBLE INPUTS:
         - INPUT(**)
@@ -120,13 +116,10 @@ def ret_node_number(inp_str: str) -> tuple[bool, int | ErrorMessage]:
     ## If you are looking to get list of numbers within the round brackets: checkout: ret_node_num_list
 
     Args:
-        inp_str (str): input string
+        inp_str: input string
 
     Returns:
-        if input is valid and number found:
-            (True, int): True says that number was found, int is node number
-        otherwise:
-            (False, ErrorMessage): Error message if the INPUT was wrong or if the node number was not found
+        A tuple (ok, value_or_message): ok True and the extracted token when successful; otherwise False and an error message.
     """
 
     try:
@@ -165,8 +158,8 @@ def ret_node_number(inp_str: str) -> tuple[bool, int | ErrorMessage]:
         return (False, f"{e}")
 
 
-def ret_node_number_list(inp_str: str) -> tuple[bool, list[int] | ErrorMessage]:
-    """### From the input string, Extract the list of node numbers list at the end of the string surrounded with brackets
+def ret_node_number_list(inp_str):
+    """From the input string, extract the comma-separated tokens inside the last pair of round brackets.
     INPUT STRING MUST HAVE COMMA SEPARATED NUMBER BETWEEN THE ROUND BRACKETS THAT ARE PRESENT AT THE END OF THE STRING
     ### POSSIBLE INPUTS:
         - INPUT(**, **, **, ...)
@@ -174,13 +167,10 @@ def ret_node_number_list(inp_str: str) -> tuple[bool, list[int] | ErrorMessage]:
         - (**, **, **, ...)
         #### the last case makes this function a generic one.
     Args:
-        inp_str (str): Input string
+        inp_str: Input string
 
     Returns:
-        if input is valid and number found:
-            (True, list[int]): True says that number was found, int is node number
-        otherwise:
-            (False, ErrorMessage): Error message if the INPUT was wrong or if the node number was not found
+        A tuple (ok, list_or_message): ok True and a list of extracted tokens when successful; otherwise False and an error message.
     """
     try:
         if not isinstance(inp_str, str):
@@ -241,15 +231,16 @@ class NodeInfo:
     Class has no dependencies on any of the other code in this class!
     """
 
-    def __init__(
-        self, inp_str: str = "default", do_validation=False
-    ):  # optional input, as programmer may intend to parse data later, but has to use the store_info_from_string method!
-        self.output_node_num: str = str()
-        self.input_node_list: list[str] = list()
-        self.gate_name: str = str()
-        # if user pases any randomn object the validate input is gonna throw it of!
-        self._inp_str: str = inp_str
-        self.gate_number: str = ""
+    def __init__(self, inp_str="default", do_validation=False):
+        # output node number as string
+        self.output_node_num = ""
+        # list of input node tokens as strings
+        self.input_node_list = []
+        # gate name as string
+        self.gate_name = ""
+        # raw input string stored for later parsing
+        self._inp_str = inp_str
+        self.gate_number = ""
 
         if self._inp_str.lower() != "default":
             # if input is not default then process
@@ -257,7 +248,7 @@ class NodeInfo:
                 self._validate_input()
             self._populate_data()
 
-    def _validate_input(self) -> None:
+    def _validate_input(self):
         if not isinstance(self._inp_str, str):
             raise UnexpectedInputStringFormat("Input must be a string")
 
@@ -287,7 +278,7 @@ class NodeInfo:
         if not re_fullmatch(r"[A-Za-z]{2,}", gate_name):
             raise UnexpectedInputStringFormat("Input string is of unexpected format!")
 
-    def _populate_data(self) -> None:
+    def _populate_data(self):
         processed_inp_str = self._inp_str.strip()
         left, right = processed_inp_str.split("=", 1)
         left, right = left.strip(), right.strip()
@@ -311,7 +302,7 @@ class NodeInfo:
             raise UnexpectedInputStringFormat(str(result))
         self.input_node_list = [str(x) for x in result]
 
-    def store_info_from_string(self, inp_str: str, do_validation: bool = False) -> None:
+    def store_info_from_string(self, inp_str, do_validation=False):
         self._inp_str = inp_str
         if do_validation:
             self._validate_input()
@@ -319,26 +310,18 @@ class NodeInfo:
 
 
 # region: NLDM related parsing
-def ret_name_and_logic_type(cell_line: str) -> tuple[str, str]:
-    """ Extract cell name and logic type from a liberty cell definition line like:
-            -> "cell (NAND2_X1) {"
+def ret_name_and_logic_type(cell_line):
+    """Extract cell name and logic type from a liberty cell definition line like: "cell (NAND2_X1) {".
 
     Args:
-        cell_line (str): A line from a liberty file that defines a cell, expected to be in the format "cell (CellName) {"
+        cell_line: A line expected to be in the format "cell (CellName) {".
 
     Raises:
-        UnexpectedInputStringFormat:    
-            - If the line does not start with "cell"
-            - If the line does not contain parentheses around the cell name
-            - If the cell name does not contain any alphabetic characters to derive logic type from
-            - If any other error occurs during parsing, a generic error message with details is raised as UnexpectedInputStringFormat
+        UnexpectedInputStringFormat: If parsing fails for various format issues.
 
     Returns:
-        tuple[str, str]: A tuple containing:
-            - name (str): The extracted cell name (e.g., "NAND2_X1")
-            - logic_type (str): The derived logic type in uppercase (e.g., "NAND")
-
-    """    
+        A tuple (name, logic_type) where both are strings.
+    """
     try:
         line = cell_line.lower().strip()
         if not line.startswith(TXT_CELL):
@@ -373,26 +356,18 @@ def ret_name_and_logic_type(cell_line: str) -> tuple[str, str]:
         raise UnexpectedInputStringFormat(f"Error parsing cell name: {e}") from e
 
 
-def ret_value_for_label(line: str) -> float:
-    """ Extract capacitance value from a line in the format "capacitance : value;" 
-            (case-insensitive, with optional whitespace)
-        - sample input:
-            "capacitance : 0.123;"
+def ret_value_for_label(line):
+    """Extract capacitance value from a line in the format "capacitance : value;".
 
     Args:
-        line (str): A line from a liberty file expected to define capacitance, e.g., 
-        "capacitance : 0.123;"
+        line: A line expected to define capacitance, e.g. "capacitance : 0.123;".
 
     Raises:
-        UnexpectedInputStringFormat: 
-            - If the line does not contain the word "capacitance"
-            - If the line does not contain a colon separating the label and value
-            - If the value cannot be converted to a float
-            - If any other error occurs during parsing, a generic error message with details is raised as UnexpectedInputStringFormat
+        UnexpectedInputStringFormat: On parsing errors or invalid value.
 
     Returns:
-        float: capacitance value
-    """    
+        The capacitance value as a float.
+    """
     try:
         text = line.strip().lower()
         if TXT_CAPACITANCE  not in text:
@@ -410,21 +385,18 @@ def ret_value_for_label(line: str) -> float:
         raise UnexpectedInputStringFormat(f"Could not convert capacitance to float: {e}") from e
 
 
-def ret_nums_in_str(line: str) -> list[float]:
-    """ Extract a list of float values from a line containing quoted comma-separated values, e.g., '"0.1, 0.2, 0.3"'
-            - sample input line:
-                => index_1 ("0.00117378,0.00472397,0.0171859,0.0409838,0.0780596,0.130081,0.198535");
+def ret_nums_in_str(line):
+    """Extract a list of float values from a line containing quoted comma-separated values, e.g., '"0.1, 0.2"'.
+
     Args:
-        line (str): A line from a liberty file containing quoted comma-separated values
+        line: A line containing quoted comma-separated numeric values.
 
     Raises:
-        UnexpectedInputStringFormat: 
-            - If the line does not contain properly quoted comma-separated values
-            - If any of the values cannot be converted to a float
+        UnexpectedInputStringFormat: If parsing fails or conversion to float fails.
 
     Returns:
-        list[float]: A list of extracted float values
-    """    
+        A list of float values extracted from the quoted segment.
+    """
     try:
         text = line.strip()
         first_quote = text.find('"')
@@ -442,8 +414,8 @@ def ret_nums_in_str(line: str) -> list[float]:
         raise UnexpectedInputStringFormat(f"Could not convert index to floats: {e}") from e
 
 
-def ret_2d_list_from_str(lines: list[str]) -> list[list[float]]:
-    """ Extract a 2D list of float values from a block of lines containing quoted comma-separated values, e.g.,
+def ret_2d_list_from_str(lines):
+    """Extract a 2D list of float values from a block of lines containing quoted comma-separated values.
         - sample input lines:
             => ["0.00474878,0.00814768,0.0123804,0.0208480,0.0377848,0.0716838,0.139435", 
                 "0.00475427,0.00814708,0.0123814,0.0208446,0.0377762,0.0716641,0.139428",
@@ -453,19 +425,15 @@ def ret_2d_list_from_str(lines: list[str]) -> list[list[float]]:
                 "0.0249336,0.0298045,0.0352101,0.0445099,0.0592803,0.0822832,0.139806",
                 "0.0337631,0.0391600,0.0452534,0.0559346,0.0736025,0.100571,0.148264"]d
     Args:
-        lines (list[str]): A list of lines from a liberty file containing quoted comma-separated values in section: values ( .... )
+        lines: A list of lines containing quoted comma-separated values.
 
     Raises:
-        UnexpectedInputStringFormat: 
-            - If any line does not contain properly quoted comma-separated values
-            - If any of the values cannot be converted to a float
+        UnexpectedInputStringFormat: On parsing or conversion failures.
 
     Returns:
-        list[list[float]]: 
-            - A 2D list of extracted float values, where each inner list corresponds to the values extracted 
-                from one line in the input block
-    """    
-    rows: list[list[float]] = [] # to store the 2D list
+        A 2D list (list of lists) of floats extracted from each line.
+    """
+    rows = []  # to store the 2D list
     for line in lines:
         line = line.strip()
         first_quote = line.find('"')
@@ -487,19 +455,15 @@ def ret_2d_list_from_str(lines: list[str]) -> list[list[float]]:
     return rows
 
 # region: interpolation related helper functions
-def find_bounds(vals: list[float], x: float) -> tuple[int, int]:
-    """ Helper function to find the indices of the two values in vals that bound x (i.e., the largest value in vals that is <= x and the smallest value in vals that is >= x).
+def find_bounds(vals, x):
+    """Find the indices of two entries in vals that bound x.
 
     Args:
-        vals (list[float]): A list of float values sorted in ascending order
-        x (float): The value for which to find the bounding indices
-        
-    Returns:
-        tuple[int, int]: A tuple containing the indices of the bounding values in vals:
-            - If x is less than or equal to the smallest value in vals, returns (0, 0)
-            - If x is greater than or equal to the largest value in vals, returns (n-1, n-1) where n is the length of vals
-            - Otherwise, returns (i-1, i) where vals[i-1] <= x < vals[i]
+        vals: A list of values sorted in ascending order.
+        x: The value to locate within vals.
 
+    Returns:
+        A tuple (i_low, i_high) of indices bounding x.
     """
     if not vals:
         return (0, 0)
@@ -515,25 +479,18 @@ def find_bounds(vals: list[float], x: float) -> tuple[int, int]:
     return (n - 1, n - 1)
 
 
-def lut_lookup_2d(
-    idx1: list[float],
-    idx2: list[float],
-    table: list[list[float]],
-    tau_ns: float,
-    cap_ff: float,
-) -> float:
-    """
-    Perform 2D LUT lookup with bilinear interpolation for the given indices and table.
+def lut_lookup_2d(idx1, idx2, table, tau_ns, cap_ff):
+    """Perform 2D LUT lookup with bilinear interpolation for the given indices and table.
 
     Args:
-        - idx1: List of float values representing the first dimension indices (e.g., time)
-        - idx2: List of float values representing the second dimension indices (e.g., capacitance)
-        - table: 2D list of float values representing the LUT values corresponding to the indices
-        - tau_ns: The value along the first dimension for which to perform the lookup
-        - cap_ff: The value along the second dimension for which to perform the lookup
-    
+        idx1: First-dimension index list (e.g., time).
+        idx2: Second-dimension index list (e.g., capacitance).
+        table: 2D table of LUT values.
+        tau_ns: Query value along first dimension.
+        cap_ff: Query value along second dimension.
+
     Returns:
-        - The interpolated LUT value corresponding to the input tau_ns and cap_ff based on the provided indices and table.
+        Interpolated LUT value for the given query point.
     """
     if not idx1 or not idx2 or not table:
         raise ValueError("Empty LUT indices/table")
@@ -584,7 +541,7 @@ def lut_lookup_2d(
     return interpolated_value
 
 
-def fmt_ps(x_ns: float) -> str:
+def fmt_ps(x_ns):
     import math
     if math.isinf(x_ns):
         return "inf"
